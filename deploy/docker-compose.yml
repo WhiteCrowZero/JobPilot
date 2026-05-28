@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.13-alpine3.23
     container_name: jobpilot-postgres
     restart: unless-stopped
     environment:
@@ -13,7 +13,7 @@ services:
     volumes:
       - jobpilot_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-jobpilot} -d $${POSTGRES_DB:-jobpilot}"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-jobpilot} -d $${POSTGRES_DB:-jobpilot}" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -21,7 +21,7 @@ services:
       - jobpilot-net
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.8-alpine3.21
     container_name: jobpilot-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-jobpilot_redis}
@@ -30,7 +30,7 @@ services:
     volumes:
       - jobpilot_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-jobpilot_redis}", "ping"]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-jobpilot_redis}", "ping" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -38,7 +38,7 @@ services:
       - jobpilot-net
 
   adminer:
-    image: adminer:latest
+    image: adminer:5.4.1
     container_name: jobpilot-adminer
     restart: unless-stopped
     ports:
@@ -50,7 +50,7 @@ services:
       - jobpilot-net
 
   flower:
-    image: mher/flower:latest
+    image: mher/flower:2.0.1
     container_name: jobpilot-flower
     restart: unless-stopped
     command:

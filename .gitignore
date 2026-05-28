@@ -118,12 +118,9 @@ token.json
 # =========================
 # Logs
 # =========================
-logs/
-log/
 *.log
 *.out
 *.err
-debug.log
 
 # =========================
 # Databases
@@ -195,33 +192,6 @@ weaviate_data/
 faiss_index/
 *.faiss
 *.index
-
-# =========================
-# LangChain / LLM related
-# =========================
-.langchain/
-langchain_cache/
-llm_cache/
-.openai/
-anthropic_cache/
-litellm_cache/
-prompt_logs/
-traces/
-runs/
-
-# =========================
-# Streamlit / Gradio / Web demos
-# =========================
-.streamlit/secrets.toml
-.gradio/
-gradio_cached_examples/
-frontend/dist/
-frontend/build/
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 
 # =========================
 # FastAPI / Flask / Django
@@ -336,3 +306,6 @@ local_config.*
 temp*
 .codex/
 *.zip
+storage/*
+!storage/.gitkeep
+!storage/uploads/.gitkeep
