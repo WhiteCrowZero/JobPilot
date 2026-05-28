@@ -1,0 +1,26 @@
+{
+    "venvPath": ".",
+    "venv": ".venv",
+    "include": [
+        "src",
+        "tests"
+    ],
+    "exclude": [
+        "**/__pycache__",
+        ".venv",
+        "logs",
+        "temp"
+    ],
+    "extraPaths": [
+        "src"
+    ],
+    "pythonVersion": "3.12",
+    "typeCheckingMode": "basic",
+    "reportMissingImports": "warning",
+    "reportMissingModuleSource": "none",
+    "reportArgumentType": "warning",
+    "reportAssignmentType": "warning",
+    "reportOptionalMemberAccess": "warning",
+    "reportOptionalSubscript": "warning",
+    "reportOptionalCall": "warning"
+}

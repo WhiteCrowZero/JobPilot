@@ -1,0 +1,338 @@
+# =========================
+# Python bytecode / cache
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# =========================
+# Virtual environments
+# =========================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+conda-meta/
+
+# =========================
+# Python packaging / build
+# =========================
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# =========================
+# PyInstaller
+# =========================
+*.manifest
+*.spec
+
+# =========================
+# Installer logs
+# =========================
+pip-log.txt
+pip-delete-this-directory.txt
+
+# =========================
+# Unit test / coverage
+# =========================
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pyre/
+.pytype/
+.hypothesis/
+coverage.xml
+*.cover
+*.py,cover
+nosetests.xml
+test-results/
+junit.xml
+
+# =========================
+# Type check / lint / format tools
+# =========================
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.vscode/.ropeproject/
+.ropeproject/
+
+# =========================
+# Jupyter Notebook
+# =========================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# =========================
+# Environment variables / secrets
+# =========================
+.env
+.env.*
+!.env.example
+!.env.template
+*.env
+
+# API keys / tokens / credentials
+secrets/
+credentials/
+private/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+service-account*.json
+google-credentials*.json
+credentials.json
+token.json
+
+# =========================
+# Logs
+# =========================
+logs/
+log/
+*.log
+*.out
+*.err
+debug.log
+
+# =========================
+# Databases
+# =========================
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.duckdb
+*.parquet.tmp
+
+# =========================
+# Data files
+# =========================
+data/
+datasets/
+dataset/
+raw_data/
+processed_data/
+outputs/
+output/
+results/
+result/
+reports/generated/
+artifacts/
+checkpoints/
+models/
+weights/
+
+# Large ML files
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.npy
+*.npz
+
+# Common dataset formats
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.feather
+*.arrow
+
+# Keep placeholders
+!data/.gitkeep
+!datasets/.gitkeep
+!outputs/.gitkeep
+!results/.gitkeep
+
+# =========================
+# Vector databases / RAG storage
+# =========================
+chroma/
+.chroma/
+chromadb/
+qdrant_storage/
+milvus/
+weaviate_data/
+faiss_index/
+*.faiss
+*.index
+
+# =========================
+# LangChain / LLM related
+# =========================
+.langchain/
+langchain_cache/
+llm_cache/
+.openai/
+anthropic_cache/
+litellm_cache/
+prompt_logs/
+traces/
+runs/
+
+# =========================
+# Streamlit / Gradio / Web demos
+# =========================
+.streamlit/secrets.toml
+.gradio/
+gradio_cached_examples/
+frontend/dist/
+frontend/build/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# FastAPI / Flask / Django
+# =========================
+instance/
+.webassets-cache
+
+# Django
+*.pot
+*.mo
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Flask
+.flaskenv
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Keep useful VSCode project settings if needed
+!.vscode/settings.json.example
+!.vscode/extensions.json
+
+# =========================
+# OS generated files
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# =========================
+# Windows / WSL
+# =========================
+*.lnk
+$RECYCLE.BIN/
+*.stackdump
+
+# =========================
+# Linux
+# =========================
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# =========================
+# Temporary files
+# =========================
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.backup
+*.orig
+
+# =========================
+# Documentation build
+# =========================
+docs/_build/
+site/
+mkdocs-site/
+
+# =========================
+# Celery / task queues
+# =========================
+celerybeat-schedule
+celerybeat.pid
+
+# =========================
+# Profiling
+# =========================
+.prof
+*.prof
+.cachegrind
+*.lprof
+
+# =========================
+# Local config
+# =========================
+config.local.*
+settings.local.*
+local_config.*
+
+# =========================
+# MySelf
+# =========================
+temp*
+.codex/
+*.zip
