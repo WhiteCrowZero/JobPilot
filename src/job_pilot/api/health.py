@@ -16,8 +16,3 @@ def health_check() -> dict[str, str]:
 @router.get("", summary="Health check")
 async def read_health() -> dict[str, str]:
     return health_check()
-
-
-@router.get("/", include_in_schema=False)
-async def read_health_slash() -> dict[str, str]:
-    return health_check()

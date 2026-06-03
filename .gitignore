@@ -309,3 +309,4 @@ temp*
 storage/*
 !storage/.gitkeep
 !storage/uploads/.gitkeep
+*草稿*

@@ -1,4 +1,4 @@
-from job_pilot.api.v1.endpoints.health import health_check
+from job_pilot.api.health import health_check
 
 
 def test_health_check() -> None:

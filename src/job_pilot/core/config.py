@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from defaults, .env and environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.test"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -26,10 +26,13 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     SECRET_KEY: str = Field(default="please-change-this-secret-key")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
-    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+    JWT_ALGORITHM: str = "HS256"
 
     DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@localhost:5432/jobpilot"
+    TEST_DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@localhost:5433/jobpilot_test"
+    DATABASE_ECHO: bool = False
 
     REDIS_URL: str = "redis://:jobpilot_redis@localhost:6389/0"
     CELERY_BROKER_URL: str = "redis://:jobpilot_redis@localhost:6389/1"
@@ -58,17 +61,30 @@ class Settings(BaseSettings):
     def validate_api_version(cls, value: str) -> str:
         return value.strip("/")
 
-    @property
-    def api_v1_prefix(self) -> str:
-        return f"{self.API_PREFIX}/{self.API_VERSION}"
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, value: str) -> str:
+        if len(value) <= 15:
+            raise ValueError("SECRET_KEY must be at least 15 characters long")
+        return value
 
     @property
     def is_local(self) -> bool:
         return self.APP_ENV == "local"
 
     @property
+    def is_test(self) -> bool:
+        return self.APP_ENV == "test"
+
+    @property
     def is_prod(self) -> bool:
         return self.APP_ENV == "prod"
+
+    @property
+    def effective_database_url(self) -> str:
+        if self.is_test:
+            return self.TEST_DATABASE_URL
+        return self.DATABASE_URL
 
     @property
     def max_upload_size_bytes(self) -> int:

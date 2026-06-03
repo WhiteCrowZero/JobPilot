@@ -1,37 +1,32 @@
-# JobPilot Agent Rules
+# JobPilot Agent 规则
 
-## 1. Project Principles
+## 1. 项目原则
 
-JobPilot is a FastAPI backend MVP. Product goals come first: build a runnable, maintainable backend system before adding crawler, AI, Kafka, Kubernetes, or other advanced components.
+JobPilot 是一个基于 FastAPI
+构建的后端工程项目，围绕招聘岗位数据的采集/摄入、结构化存储、搜索筛选、技能标签提取、目标岗位管理、技能差距分析、学习任务生成和八股题掌握记录，重点展示后端数据建模、缓存、异步任务、权限隔离、测试与部署能力。
 
-Prioritize:
-
-- Small, verifiable steps
-- Clear module boundaries
-- Simple code over premature abstractions
-- Backend business flow and service coordination
-
-Do not introduce new dependencies, large refactors, or architecture changes without user confirmation.
+> 项目重点体现开发者的后端基本功和一定的深度，从MVP到产品级别演进。
 
 ---
 
-## 2. Development Workflow
+## 2. 开发流程
 
-Follow MVP-first iteration:
+遵循 MVP 优先的迭代方式，除非用户明确要求（严格以`[system refactor]`开头），否则不要进行整体重写，直接明确拒绝。
 
-1. Keep the project runnable.
-2. Implement one module or one clear task at a time.
-3. Verify each runtime change with tests or a concrete command.
-4. Update this file when the project structure changes.
-5. Keep README concise and user-facing.
+以后每做一个模块，都要同时产出 4 个东西：
 
-Avoid full rewrites unless explicitly requested.
+```text
+1. 代码
+2. 测试
+3. README / 学习文档
+4. 涉及八股问题
+```
 
 ---
 
-## 3. Tools and Environment
+## 3. 工具与环境
 
-Use `uv` by default:
+默认使用 `uv` 进行依赖和环境管理：
 
 ```bash
 uv add <package>
@@ -40,27 +35,19 @@ uv run <command>
 uv sync
 ```
 
-Do not use `uv pip` unless the user explicitly asks for it.
+禁止使用：
 
-Core stack:
-
-- Python 3.12
-- FastAPI
-- SQLAlchemy 2.0 async
-- Alembic
-- PostgreSQL
-- Redis
-- Celery
-- pytest
-- Docker Compose
+```bash
+uv pip
+```
 
 ---
 
-## 4. Verification and Testing
+## 4. 验证与测试
 
-Runtime code changes should be verified.
+所有运行时代码变更都应进行验证。
 
-Recommended commands:
+推荐验证命令：
 
 ```bash
 uv run ruff check .
@@ -68,96 +55,107 @@ uv run pytest
 uv run pyright
 ```
 
-Do not add excessive tests. Cover core paths first: health check, auth, job import, deduplication, and application status changes.
+要求：
+
+1. AAA原则
+2. 见名知意，比如：test_create_user_with_invalid_email()
+3. 我提供的测试数据库：
 
 ---
 
-## 5. Git Rules
+## 5. 项目基本结构
 
-- Do not perform Git write operations.
-- Read-only Git commands are allowed.
-- You may suggest branch names and commit messages.
+我隐藏了一些不重要的文件，主要结构如下：
 
----
-
-## 6. Current Project Structure
-
-```txt
+```text
 JobPilot/
-├── README.md                         # 简短项目说明，控制在 10 行以内
-├── AGENTS.md                         # AI/协作规则与结构树
-├── pyproject.toml                    # Python 项目、依赖、工具配置
-├── uv.lock                           # uv 锁文件
-├── pyrightconfig.json                # Pyright 类型检查配置
-├── Makefile                          # 常用命令封装
-├── .python-version                   # Python 版本
-├── .env                              # 本地环境变量，不建议提交到 Git
-├── .env.example                      # 环境变量示例，可提交
-├── .gitignore                        # Git 忽略规则
-├── .dockerignore                     # Docker 构建忽略规则
-├── alembic.ini                       # Alembic 主配置
-├── alembic/
-│   ├── env.py                        # Alembic 异步迁移环境
-│   └── versions/
-│       └── .gitkeep                  # 迁移脚本目录占位
-├── deploy/
-│   ├── .env                          # Docker Compose 服务端口与密码
-│   ├── Dockerfile                    # 后端镜像构建文件，后期使用
-│   └── docker-compose.yml            # PostgreSQL、Redis、Adminer、Flower
-├── docs/
-│   ├── 项目草稿.md                   # 项目规划草稿
-│   └── 初始项目说明.md               # 初始项目使用与结构说明
-├── logs/
-│   └── .gitkeep                      # 日志目录占位
-├── scripts/
-│   └── clean.ps1                     # Windows 清理脚本
-├── storage/
-│   ├── .gitkeep                      # 本地存储目录占位
-│   └── uploads/
-│       └── .gitkeep                  # 上传文件目录占位
-├── src/
-│   └── job_pilot/
-│       ├── __init__.py
-│       ├── main.py                   # FastAPI 应用入口
-│       ├── api/
-│       │   ├── __init__.py
-│       │   ├── deps.py               # API 公共依赖，如数据库会话
-│       │   └── v1/
-│       │       ├── __init__.py
-│       │       ├── router.py         # v1 总路由
-│       │       └── endpoints/
-│       │           ├── __init__.py
-│       │           └── health.py     # 健康检查接口
-│       ├── core/
-│       │   ├── __init__.py
-│       │   ├── config.py             # Pydantic Settings 配置
-│       │   ├── exceptions.py         # 项目基础异常
-│       │   └── redis.py              # Redis 异步客户端
-│       ├── db/
-│       │   ├── __init__.py
-│       │   ├── base.py               # SQLAlchemy DeclarativeBase
-│       │   ├── models.py             # ORM 模型集中导入入口
-│       │   └── session.py            # 异步数据库连接与 Session
-│       ├── modules/
-│       │   ├── __init__.py
-│       │   ├── auth/                 # 登录认证模块，待实现
-│       │   ├── users/                # 用户模块，待实现
-│       │   ├── jobs/                 # 岗位模块，待实现
-│       │   ├── applications/         # 投递模块，待实现
-│       │   ├── interviews/           # 面试复盘模块，待实现
-│       │   ├── study_tasks/          # 学习任务模块，待实现
-│       │   └── imports/              # 数据导入模块，待实现
-│       ├── utils/
-│       │   └── __init__.py
-│       └── workers/
-│           ├── __init__.py
-│           └── celery_app.py         # Celery 应用与测试任务
-└── tests/
-    ├── __init__.py
-    ├── conftest.py                   # pytest 公共 fixture
-    ├── unit/
-    │   ├── __init__.py
-    │   └── test_health.py            # 健康检查单元测试
-    └── integration/
-        └── __init__.py               # 集成测试目录
+|-- README.md
+|-- AGENTS.md
+|-- pyproject.toml
+|-- .env
+|-- .env.example
+|-- .env.test
+|-- .gitignore
+|-- .dockerignore
+|-- alembic.ini
+|-- alembic/
+|   |-- env.py
+|   `-- versions/
+|-- deploy/
+|   |-- .env
+|   |-- Dockerfile
+|   `-- docker-compose.yml
+|-- docs/
+|   |-- 思路草稿.md
+|   `-- 项目规划.md
+|-- logs/
+|-- src/
+|   `-- job_pilot/
+|       |-- main.py
+|       |-- api/
+|       |   |-- deps.py
+|       |   |-- health.py
+|       |   `-- v1/
+|       |       `-- router.py
+|       |-- core/
+|       |   |-- config.py
+|       |   |-- enums.py
+|       |   |-- exceptions.py
+|       |   `-- redis.py
+|       |-- db/
+|       |   |-- base.py
+|       |   |-- models.py
+|       |   `-- session.py
+|       |-- modules/
+|       |   |-- __init__.py
+|       |   |-- auth/
+|       |   |-- users/
+|       |   |-- job_posts/
+|       |   |-- job_skills/
+|       |   |-- job_collections/
+|       |   |-- job_targets/
+|       |   |-- user_skills/
+|       |   |-- job_match/
+|       |   |-- study_tasks/
+|       |   |-- knowledge/
+|       |   |-- questions/
+|       |   |-- ingestion/
+|       |   `-- system/
+|       |-- utils/
+|       `-- workers/
+|           `-- celery_app.py
+`-- tests/
+    |-- conftest.py
+    |-- api/
+    |-- unit/
+    `-- integration/
 ```
+
+## 6. 项目最终简历形态
+
+> 一切都是奔着这个目标，实现功能的同时，学会相关知识点，能够讲好整个项目。
+
+* **项目描述：** 基于 **FastAPI 模块化后端架构**
+  开发的招聘岗位情报与求职准备平台，围绕岗位数据摄入、清洗去重、技能标签提取、岗位搜索筛选、目标岗位管理、技能差距分析、学习任务生成、八股题掌握记录等场景，形成
+  **“岗位情报 → 技能分析 → 学习准备”** 的后端业务闭环。系统重点体现 **认证鉴权、数据建模、复杂查询、缓存优化、异步任务、幂等处理、测试与容器化部署
+  ** 等后端工程能力。
+* **技术栈：** **FastAPI、Pydantic v2、SQLAlchemy 2.0、Alembic、PostgreSQL、Redis、Celery、JWT、Docker Compose、pytest、uv**
+* **个人职责：**
+    1. 基于 **FastAPI + SQLAlchemy 2.0** 完成后端模块化设计，将系统拆分为 **用户认证、岗位数据、数据摄入、用户工作台、学习准备、缓存与异步任务
+       ** 等领域模块，采用 **router / schema / service / repository / model** 分层组织代码。
+    2. 设计 **JWT access token + refresh token** 认证体系，支持用户注册登录、token 刷新、会话撤销、用户禁用校验；通过 *
+       *FastAPI Depends** 获取当前用户，并在收藏、目标岗位、技能画像、学习任务等模块中实现 **用户数据隔离**。
+    3. 设计 **岗位数据模型与技能标签模型**，支持岗位列表、详情、关键词搜索、城市/薪资/技能多条件筛选；通过 **岗位
+       fingerprint + 数据库唯一约束** 实现岗位去重，使用 **Alembic** 管理数据库结构演进。
+    4. 设计 **目标岗位与用户技能画像模块**，支持用户收藏岗位、设为目标岗位、维护个人技能水平；基于岗位技能与用户技能进行 *
+       *matched / missing / weak 技能差距分析**，为学习任务生成提供依据。
+    5. 设计 **学习任务与八股题掌握模块**，支持根据目标岗位缺失技能生成学习任务，按技能推荐面试题，并记录用户对题目的 *
+       *todo / reviewing / mastered** 掌握状态，形成岗位准备闭环。
+    6. 引入 **Redis Cache Aside 缓存模式**，缓存岗位详情、热门技能统计、任务进度等高频数据；在写操作后删除相关缓存，降低数据库重复查询压力，并保证
+       **数据库作为最终事实来源**。
+    7. 使用 **Celery + Redis** 处理岗位数据摄入、字段清洗、技能提取、去重入库等异步任务，避免耗时任务阻塞 HTTP 请求；结合 *
+       *任务状态表、错误记录、唯一约束和幂等设计** 处理重复执行、部分失败和失败重试等场景。
+    8. 编写 **pytest 单元测试与接口测试**，覆盖认证鉴权、权限隔离、岗位查询、收藏目标岗位、技能差距分析、学习任务生成、数据摄入去重等核心流程；使用
+       **Docker Compose** 编排 PostgreSQL、Redis、API、Worker 等服务，保证项目可运行、可迁移、可测试。
+* **技术亮点：** 使用 **Redis、Celery、唯一约束、幂等任务、Cache Aside、用户数据隔离、异步数据摄入**
+  保障系统在高频查询和批量数据处理场景下的稳定性与可扩展性。
