@@ -310,3 +310,4 @@ storage/*
 !storage/.gitkeep
 !storage/uploads/.gitkeep
 *草稿*
+*八股*

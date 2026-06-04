@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from job_pilot.core.cache import CacheStore, DistributedLock
+from job_pilot.core.exceptions import ForbiddenError
 from job_pilot.core.message_queue import MessageQueue
 from job_pilot.core.resources import AppResources
 from job_pilot.modules.auth.exceptions import TokenError
@@ -54,10 +55,7 @@ async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
     if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled",
-        )
+        raise ForbiddenError("Account is disabled")
     return current_user
 
 
@@ -68,10 +66,7 @@ async def get_current_superuser(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> User:
     if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
+        raise ForbiddenError("Not enough permissions")
     return current_user
 
 
@@ -88,7 +83,3 @@ def get_cache_store(request: Request) -> CacheStore:
 
 def get_distributed_lock(request: Request) -> DistributedLock:
     return get_resources(request).lock
-
-
-def get_message_queue(request: Request) -> MessageQueue:
-    return get_resources(request).message_queue
