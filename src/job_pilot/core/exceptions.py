@@ -36,7 +36,7 @@ class UnauthorizedError(AppError):
 
 class BadRequestError(AppError):
     def __init__(self, message: str = "Bad request", code: str = "BAD_REQUEST"):
-        super().__init__(message=message, code=code, status_code=400)
+        super().__init__(message=message, code=code, status_code=status.HTTP_400_BAD_REQUEST)
 
 
 async def app_error_handler(_: Request, exc: Exception) -> JSONResponse:

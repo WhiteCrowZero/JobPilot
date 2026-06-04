@@ -1,31 +1,46 @@
+from __future__ import annotations
+
 from functools import lru_cache
+from os import getenv
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+AppEnv = Literal["local", "dev", "test", "prod"]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def resolve_env_file(app_env: str | None = None) -> Path:
+    selected_app_env = (app_env or getenv("APP_ENV") or "local").strip().lower()
+    if selected_app_env == "local":
+        return PROJECT_ROOT / ".env"
+    if selected_app_env in {"dev", "test", "prod"}:
+        return PROJECT_ROOT / f".env.{selected_app_env}"
+    return PROJECT_ROOT / ".env"
+
 
 class Settings(BaseSettings):
-    """Application settings loaded from defaults, .env and environment variables."""
+    """应用配置，统一从默认值、.env 文件和环境变量读取。"""
 
     model_config = SettingsConfigDict(
-        env_file=(".env", ".env.test"),
+        env_file=resolve_env_file(),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
     )
 
     APP_NAME: str = "JobPilot"
-    APP_ENV: Literal["local", "dev", "test", "prod"] = "local"
-    DEBUG: bool = True
+    APP_ENV: AppEnv = "local"
+    DEBUG: bool = False
     API_PREFIX: str = "/api"
     API_VERSION: str = "v1"
 
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    SECRET_KEY: str = Field(default="please-change-this-secret-key")
+    SECRET_KEY: str = Field(default="change-me-secret")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     JWT_ALGORITHM: str = "HS256"
@@ -34,9 +49,9 @@ class Settings(BaseSettings):
     TEST_DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@localhost:5433/jobpilot_test"
     DATABASE_ECHO: bool = False
 
-    REDIS_URL: str = "redis://:jobpilot_redis@localhost:6389/0"
-    CELERY_BROKER_URL: str = "redis://:jobpilot_redis@localhost:6389/1"
-    CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@localhost:6389/2"
+    REDIS_URL: str = "redis://:jobpilot_redis@localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://:jobpilot_redis@localhost:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@localhost:6379/2"
 
     UPLOAD_DIR: Path = Path("./storage/uploads")
     MAX_UPLOAD_SIZE_MB: int = 20
@@ -64,8 +79,8 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, value: str) -> str:
-        if len(value) <= 15:
-            raise ValueError("SECRET_KEY must be at least 15 characters long")
+        if len(value) < 20:
+            raise ValueError("SECRET_KEY must be at least 20 characters long")
         return value
 
     @property

@@ -11,7 +11,6 @@ from starlette import status
 from job_pilot.core.cache import CacheStore, DistributedLock
 from job_pilot.core.message_queue import MessageQueue
 from job_pilot.core.resources import AppResources
-from job_pilot.db.session import get_db_session
 from job_pilot.modules.auth.exceptions import TokenError
 from job_pilot.modules.auth.tokens import decode_access_token
 from job_pilot.modules.users import repository as user_repository
@@ -20,8 +19,9 @@ from job_pilot.modules.users.models import User
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    async for session in get_db_session():
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    resources = get_resources(request)
+    async with resources.database.session_factory() as session:
         yield session
 
 

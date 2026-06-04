@@ -10,6 +10,8 @@ from redis.asyncio import Redis
 
 from job_pilot.core.config import Settings
 
+# TODO：仍需要完善MQ的抽象和构建，阶段7处理
+
 
 class DomainEvent(BaseModel):
     """领域事件：业务已经发生的事情。"""
@@ -24,6 +26,8 @@ class MessageQueue(Protocol):
     async def publish(self, event: DomainEvent) -> None: ...
 
     async def consume(self, timeout_seconds: int = 1) -> DomainEvent | None: ...
+
+    async def health_check(self) -> bool: ...
 
     async def close(self) -> None: ...
 
@@ -42,6 +46,9 @@ class MemoryMessageQueue:
             return await asyncio.wait_for(self._queue.get(), timeout=timeout_seconds)
         except TimeoutError:
             return None
+
+    async def health_check(self) -> bool:
+        return True
 
     async def close(self) -> None:
         while not self._queue.empty():
@@ -65,6 +72,12 @@ class RedisListMessageQueue:
         _, raw = item
         data = json.loads(raw)
         return DomainEvent.model_validate(data)
+
+    async def health_check(self) -> bool:
+        try:
+            return bool(await self._redis.ping())
+        except Exception:
+            return False
 
     async def close(self) -> None:
         await self._redis.aclose()

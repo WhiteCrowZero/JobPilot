@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from job_pilot.core.config import settings
 
@@ -16,3 +16,8 @@ def health_check() -> dict[str, str]:
 @router.get("", summary="Health check")
 async def read_health() -> dict[str, str]:
     return health_check()
+
+
+@router.get("/readiness", summary="Readiness check")
+async def read_readiness(request: Request) -> dict[str, bool]:
+    return await request.app.state.resources.health_check()

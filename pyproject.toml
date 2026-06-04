@@ -56,6 +56,9 @@ indent-style = "space"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
+markers = [
+    "smoke: live HTTP smoke tests against a running JobPilot service",
+]
 
 [tool.coverage.run]
 source = ["src"]

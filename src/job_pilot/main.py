@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,9 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from job_pilot.api.v1.router import api_router
 from job_pilot.core.config import settings
 from job_pilot.core.exceptions import register_exception_handlers
-from job_pilot.core.redis import close_redis
 from job_pilot.core.resources import AppResources, build_app_resources
-from job_pilot.db.session import dispose_engine
 
 
 @asynccontextmanager
@@ -22,8 +22,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         resources: AppResources | None = getattr(app.state, "resources", None)
         if resources is not None:
             await resources.close()
-        await close_redis()
-        await dispose_engine()
 
 
 def create_app() -> FastAPI:
