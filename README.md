@@ -37,7 +37,7 @@ JobPilot 面向求职者和后端学习场景，围绕招聘岗位数据建立�
 
 ```text
 src/job_pilot/modules/
-  auth/             # 注册、登录、JWT、refresh token、会话撤销
+  auth/             # 注册、登录、JWT access/refresh token、密码凭证
   users/            # 用户资料、用户状态、当前用户读取
   job_posts/        # 岗位主数据、搜索筛选、详情查询、去重
   job_skills/       # 岗位技能标签、规则提取、热门技能统计
@@ -56,26 +56,29 @@ src/job_pilot/modules/
 
 ### 3.1 当前实现状态
 
-当前项目处于阶段 0：认证与用户模块建设中。
+当前项目已完成阶段 0：MVP 用户认证闭环。
 
 已完成：
 
 - FastAPI 应用入口、`/api/v1/health` 健康检查。
 - `auth` / `users` 基础分层：`router / schema / service / repository / model`。
-- 用户注册、登录、当前用户读取、JWT access token / refresh token 基础签发与解析。
-- `users`、`auth_accounts`、`user_sessions` 模型定义。
+- 邮箱注册、手机号注册、邮箱登录、手机号登录、当前用户读取。
+- JWT access token / refresh token 签发；refresh token 使用 Redis 保存 hash，不落数据库。
+- refresh 时原子消费旧 refresh token，并重新签发 access token 和 refresh token。
+- logout 通过消费 refresh token 完成当前登录态撤销。
+- 用户禁用后会拒绝 refresh 和当前用户访问。
+- `users`、`user_profiles`、`auth_identities`、`auth_password_credentials` 模型定义。
+- Alembic migration 已覆盖用户与认证表结构演进。
 - App lifespan 统一管理数据库 engine、Redis 缓存连接、分布式锁、轻量消息队列。
 - `AppResources.health_check()` 统一检查数据库、Redis、消息队列资源状态。
 - Redis 缓存抽象、分布式锁抽象、轻量消息队列抽象、Celery app 基础配置。
-- 基础单元测试：健康检查、JWT token 解析与类型校验。
+- 认证相关单元测试与 API 测试已覆盖注册、登录、刷新、退出、当前用户读取和异常路径。
 
-阶段 0 仍需补齐：
+阶段 0 的 MVP 边界：
 
-- refresh token hash 落库到 `user_sessions`。
-- refresh token 轮换、session 撤销、logout。
-- 用户禁用后的 refresh / 当前用户访问校验。
-- 首个 Alembic migration。
-- 注册、登录、刷新、退出、当前用户接口测试。
+- 暂不做第三方登录、短信验证码、设备管理、全局踢下线和 access token 黑名单。
+- access token 保持短有效期；logout 和 refresh 轮换只撤销 refresh token。
+- 下一阶段可以进入 `job_posts`，开始建设岗位主数据、搜索筛选和 fingerprint 去重。
 
 ## 4. MVP 范围
 
@@ -115,8 +118,8 @@ MVP 暂不做：
 
 | 模块                | 核心表                                                                 | 职责边界                                    |
 |-------------------|---------------------------------------------------------------------|-----------------------------------------|
-| `auth`            | `auth_accounts`、`user_sessions`                                     | 登录身份、密码哈希、refresh token session、会话撤销    |
-| `users`           | `users`                                                             | 用户基础资料、用户状态、超级用户标记                      |
+| `auth`            | `auth_identities`、`auth_password_credentials`                       | 登录身份、密码哈希、JWT token 签发与校验               |
+| `users`           | `users`、`user_profiles`                                             | 用户主体、用户状态、超级用户标记、公开资料                   |
 | `job_posts`       | `job_posts`、`job_sources`                                           | 岗位主数据、来源链接、fingerprint 去重、搜索筛选          |
 | `job_skills`      | `skills`、`skill_aliases`、`job_post_skills`                          | 技能字典、技能别名、岗位技能关系、热门技能统计                 |
 | `ingestion`       | `ingestion_tasks`、`raw_job_records`、`ingestion_errors`              | 外部岗位数据摄入、清洗、错误记录、幂等入库                   |
@@ -161,12 +164,12 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
 
 | 服务              | 用途                      | 地址                      |
 |-----------------|-------------------------|-------------------------|
-| PostgreSQL      | 开发数据库                   | `localhost:5432`        |
-| PostgreSQL Test | 测试数据库                   | `localhost:5433`        |
-| Redis           | 缓存、Celery broker/result | `localhost:6479`        |
-| pgAdmin         | PostgreSQL Web 管理       | `http://localhost:8180` |
-| Prometheus      | 指标采集与查询                 | `http://localhost:9090` |
-| Grafana         | 监控面板                    | `http://localhost:3000` |
+| PostgreSQL      | 开发数据库                   | `127.0.0.1:5432`        |
+| PostgreSQL Test | 测试数据库                   | `127.0.0.1:5433`        |
+| Redis           | 缓存、Celery broker/result | `127.0.0.1:6479`        |
+| pgAdmin         | PostgreSQL Web 管理       | `http://127.0.0.1:8180` |
+| Prometheus      | 指标采集与查询                 | `http://127.0.0.1:9090` |
+| Grafana         | 监控面板                    | `http://127.0.0.1:3000` |
 
 pgAdmin 默认登录账号来自 `deploy/.env`：
 
@@ -233,17 +236,17 @@ smoke 测试默认请求 `http://127.0.0.1:8000`。普通 `uv run pytest` 只会
 4. 涉及八股问题
 ```
 
-| 阶段 | 目标          | 必须交付                                                                                                                                     |
-|----|-------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| 0  | 认证闭环        | `users/auth_accounts/user_sessions`、register/login/me/refresh/logout、refresh token hash 落库、session revoke、migration、auth API 测试、JWT 八股文档 |
-| 1  | 岗位主数据       | `job_posts/job_sources`、seed 数据导入、fingerprint 唯一约束、列表/详情/关键词/城市/薪资筛选、索引、API 测试                                                           |
-| 2  | 技能标签        | `skills/skill_aliases/job_post_skills`、规则词典提取、按技能筛选、热门技能统计、去重测试                                                                          |
-| 3  | 用户工作台       | 收藏、取消收藏、目标岗位、目标状态、用户技能画像、`user_id + job_id` 唯一约束、越权测试                                                                                    |
-| 4  | 技能差距分析      | `matched/missing/weak` service、目标岗位匹配接口、纯 service 单元测试、边界用例                                                                              |
-| 5  | 学习闭环        | 学习任务生成、题库推荐、题目掌握状态、公共题库和用户状态拆表、任务状态流转测试                                                                                                  |
-| 6  | Cache Aside | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                                         |
-| 7  | Celery 摄入   | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                                            |
-| 8  | 工程化收尾       | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                                                  |
+| 阶段 | 目标          | 必须交付                                                                                                                                             |
+|----|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0  | 认证闭环        | `users/user_profiles/auth_identities/auth_password_credentials`、register/login/me/refresh、access/refresh token 轮换、migration、auth API 测试、JWT 八股文档 |
+| 1  | 岗位主数据       | `job_posts/job_sources`、seed 数据导入、fingerprint 唯一约束、列表/详情/关键词/城市/薪资筛选、索引、API 测试                                                                   |
+| 2  | 技能标签        | `skills/skill_aliases/job_post_skills`、规则词典提取、按技能筛选、热门技能统计、去重测试                                                                                  |
+| 3  | 用户工作台       | 收藏、取消收藏、目标岗位、目标状态、用户技能画像、`user_id + job_id` 唯一约束、越权测试                                                                                            |
+| 4  | 技能差距分析      | `matched/missing/weak` service、目标岗位匹配接口、纯 service 单元测试、边界用例                                                                                      |
+| 5  | 学习闭环        | 学习任务生成、题库推荐、题目掌握状态、公共题库和用户状态拆表、任务状态流转测试                                                                                                          |
+| 6  | Cache Aside | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                                                 |
+| 7  | Celery 摄入   | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                                                    |
+| 8  | 工程化收尾       | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                                                          |
 
 阶段 1 要先提供轻量 seed / JSON 导入，保证系统早期就有岗位数据可查。阶段 7 再把摄入流程升级为 Celery 异步任务和幂等处理。
 
@@ -251,16 +254,16 @@ smoke 测试默认请求 `http://127.0.0.1:8000`。普通 `uv run pytest` 只会
 
 接口设计按业务闭环推进，优先保证用户侧核心流程可用：
 
-| 阶段 | API                                                                                                                                                                                     | 说明                        |
-|----|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|
-| 0  | `POST /auth/register`、`POST /auth/login`、`POST /auth/refresh`、`POST /auth/logout`、`GET /users/me`                                                                                       | 完成登录态、刷新、退出和当前用户读取        |
-| 1  | `GET /jobs`、`GET /jobs/{job_id}`                                                                                                                                                        | 岗位列表、详情、关键词/城市/薪资筛选       |
-| 2  | `GET /skills`、`GET /skills/hot`、`GET /jobs?skill=python`                                                                                                                                | 技能字典、热门技能、按技能筛选岗位         |
-| 3  | `POST /job-collections`、`DELETE /job-collections/{job_id}`、`GET /job-collections`、`POST /job-targets`、`GET /job-targets`、`PATCH /job-targets/{target_id}`、`PUT /user-skills/{skill_id}` | 用户收藏、目标岗位、技能画像            |
-| 4  | `GET /job-targets/{target_id}/match`                                                                                                                                                    | 输出目标岗位与用户技能画像的差距          |
-| 5  | `POST /study-tasks/generate`、`GET /study-tasks`、`PATCH /study-tasks/{task_id}`、`GET /questions/recommended`、`PUT /questions/{question_id}/mastery`                                      | 生成学习任务、推荐题目、记录掌握状态        |
-| 6  | 无需新增业务 API                                                                                                                                                                              | 在岗位详情、热门技能、任务进度等高频读接口接入缓存 |
-| 7  | `POST /ingestion/tasks`、`GET /ingestion/tasks/{task_id}`、`GET /ingestion/tasks/{task_id}/errors`                                                                                        | 创建摄入任务、查询状态、查看错误记录        |
+| 阶段 | API                                                                                                                                                                                     | 说明                               |
+|----|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
+| 0  | `POST /auth/register/email`、`POST /auth/register/phone`、`POST /auth/login/email`、`POST /auth/login/phone`、`POST /auth/refresh`、`POST /auth/logout`、`GET /users/me`                      | 完成邮箱/手机号登录态、refresh 轮换、退出和当前用户读取 |
+| 1  | `GET /jobs`、`GET /jobs/{job_id}`                                                                                                                                                        | 岗位列表、详情、关键词/城市/薪资筛选              |
+| 2  | `GET /skills`、`GET /skills/hot`、`GET /jobs?skill=python`                                                                                                                                | 技能字典、热门技能、按技能筛选岗位                |
+| 3  | `POST /job-collections`、`DELETE /job-collections/{job_id}`、`GET /job-collections`、`POST /job-targets`、`GET /job-targets`、`PATCH /job-targets/{target_id}`、`PUT /user-skills/{skill_id}` | 用户收藏、目标岗位、技能画像                   |
+| 4  | `GET /job-targets/{target_id}/match`                                                                                                                                                    | 输出目标岗位与用户技能画像的差距                 |
+| 5  | `POST /study-tasks/generate`、`GET /study-tasks`、`PATCH /study-tasks/{task_id}`、`GET /questions/recommended`、`PUT /questions/{question_id}/mastery`                                      | 生成学习任务、推荐题目、记录掌握状态               |
+| 6  | 无需新增业务 API                                                                                                                                                                              | 在岗位详情、热门技能、任务进度等高频读接口接入缓存        |
+| 7  | `POST /ingestion/tasks`、`GET /ingestion/tasks/{task_id}`、`GET /ingestion/tasks/{task_id}/errors`                                                                                        | 创建摄入任务、查询状态、查看错误记录               |
 
 ## 10. 阶段完成标准
 

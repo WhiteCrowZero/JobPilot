@@ -45,20 +45,20 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     JWT_ALGORITHM: str = "HS256"
 
-    DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@localhost:5432/jobpilot"
-    TEST_DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@localhost:5433/jobpilot_test"
+    DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@127.0.0.1:5432/jobpilot"
+    TEST_DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@127.0.0.1:5433/jobpilot_test"
     DATABASE_ECHO: bool = False
 
-    REDIS_URL: str = "redis://:jobpilot_redis@localhost:6379/0"
-    CELERY_BROKER_URL: str = "redis://:jobpilot_redis@localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@localhost:6379/2"
+    REDIS_URL: str = "redis://:jobpilot_redis@127.0.0.1:6479/0"
+    CELERY_BROKER_URL: str = "redis://:jobpilot_redis@127.0.0.1:6479/1"
+    CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@127.0.0.1:6479/2"
 
     UPLOAD_DIR: Path = Path("./storage/uploads")
     MAX_UPLOAD_SIZE_MB: int = 20
 
     BACKEND_CORS_ORIGINS: list[str] = [
-        "http://localhost:3000",
-        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
         "http://127.0.0.1:5173",
     ]
 

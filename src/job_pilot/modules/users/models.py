@@ -96,7 +96,6 @@ class UserProfile(TimestampMixin, Base):
 
     设计原则：
     - 资料信息和认证信息分离。
-    - username 是公开用户名 / handle，不等于登录账号。
     - display_name 是展示昵称，可以重复。
     """
 
@@ -109,14 +108,6 @@ class UserProfile(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
         comment="关联 users.id，同时作为用户资料表主键。",
-    )
-
-    username: Mapped[str | None] = mapped_column(
-        String(50),
-        nullable=True,
-        unique=True,
-        index=True,
-        comment="公开用户名或 handle，可为空但填写后必须全局唯一。",
     )
 
     display_name: Mapped[str] = mapped_column(

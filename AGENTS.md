@@ -21,9 +21,12 @@ JobPilot 是一个基于 FastAPI
     2. 测试
     3. 学习文档，涉及的八股问题（在`docs/八股文档`下）
     ```
-3. 每个函数和类属性，都要写类型注释，一定是具体的类型，尽量不要是 `Any`
-4. 每个.py文件的开头加上 `from __future__ import annotations`
+3. 每个函数和类属性，都要写类型注释，一定是具体的类型，尽量不要是 `Any`。
+4. 每个.py文件的开头加上 `from __future__ import annotations`。
 5. service 的异常尽量抛到 `src/job_pilot/core/exceptions.py` 定义的异常中，不要到处乱写 HTTPException，往统一异常靠。
+6. 每个函数和类尽量写一个总注释，使用中文注释，不要太长，突出重点；特别简单的一些函数或者类（非常简短或者功能很小的）可以不加。
+7. 本地不要写 `localhost` ，统一改成 `127.0.0.1` ，避免 Windows + Docker 出现特殊问题。
+8. 读取文件时统一采取 `utf8` 的格式，避免乱码。
 
 ---
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 import jwt
 from pydantic import BaseModel
@@ -23,6 +24,7 @@ class TokenType(StrEnum):
 class TokenData(BaseModel):
     user_id: int
     sub: str
+    jti: str
     token_type: TokenType
     expires_at: datetime
 
@@ -63,11 +65,6 @@ def decode_refresh_token(token: str) -> TokenData:
     return decode_token(token, expected_type=TokenType.REFRESH)
 
 
-def refresh_access_token(refresh_token: str) -> str:
-    token_data = decode_refresh_token(refresh_token)
-    return create_access_token(token_data.user_id)
-
-
 def decode_token_payload(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
@@ -84,6 +81,7 @@ def _create_token(*, user_id: int, token_type: TokenType, expires_delta: timedel
     payload: dict[str, Any] = {
         "sub": subject,
         "user_id": user_id,
+        "jti": uuid4().hex,
         "token_type": token_type.value,
         "iat": now,
         "exp": expire,
@@ -93,11 +91,14 @@ def _create_token(*, user_id: int, token_type: TokenType, expires_delta: timedel
 
 def _parse_payload(payload: dict[str, Any]) -> TokenData:
     subject = payload.get("sub")
+    jwt_id = payload.get("jti")
     token_type_value = payload.get("token_type")
     expires_at_value = payload.get("exp")
 
     if not isinstance(subject, str) or not subject:
         raise InvalidTokenError("Token subject is missing")
+    if not isinstance(jwt_id, str) or not jwt_id:
+        raise InvalidTokenError("Token id is missing")
     if not isinstance(token_type_value, str):
         raise InvalidTokenError("Token type is missing")
 
@@ -110,12 +111,13 @@ def _parse_payload(payload: dict[str, Any]) -> TokenData:
     if str(user_id) != subject:
         raise InvalidTokenError("Token subject does not match user id")
 
-    if not isinstance(expires_at_value, int | float):
+    if not isinstance(expires_at_value, (int, float)):
         raise InvalidTokenError("Token expiration is missing")
 
     return TokenData(
         user_id=user_id,
         sub=subject,
+        jti=jwt_id,
         token_type=token_type,
         expires_at=datetime.fromtimestamp(expires_at_value, UTC),
     )

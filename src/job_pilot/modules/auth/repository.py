@@ -1,50 +1,61 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from job_pilot.modules.auth.enums import AuthProviderType
-from job_pilot.modules.auth.models import AuthAccount
+from job_pilot.modules.auth.enums import AuthProvider
+from job_pilot.modules.auth.models import AuthIdentity, AuthPasswordCredential
 from job_pilot.modules.users.models import User
 
 
-def normalize_email(email: str) -> str:
-    return email.strip().lower()
-
-
-async def get_auth_account_by_email(
-    email: str,
+async def get_password_identity(
+    *,
+    provider: AuthProvider,
+    provider_subject: str,
     session: AsyncSession,
-) -> AuthAccount | None:
+) -> AuthIdentity | None:
     result = await session.execute(
-        select(AuthAccount)
-        .options(selectinload(AuthAccount.user))
+        select(AuthIdentity)
+        .options(
+            selectinload(AuthIdentity.user).selectinload(User.profile),
+            selectinload(AuthIdentity.password_credential),
+        )
         .where(
-            AuthAccount.provider_type == AuthProviderType.EMAIL,
-            AuthAccount.provider_account == normalize_email(email),
+            AuthIdentity.provider == provider,
+            AuthIdentity.provider_subject == provider_subject,
         )
     )
     return result.scalar_one_or_none()
 
 
-async def create_email_auth_account(
+async def create_password_identity(
     *,
     user: User,
-    email: str,
+    provider: AuthProvider,
+    provider_subject: str,
     password_hash: str,
     session: AsyncSession,
-    is_primary: bool = True,
-    is_verified: bool = False,
-) -> AuthAccount:
-    auth_account = AuthAccount(
+) -> AuthIdentity:
+    identity = AuthIdentity(
         user=user,
-        provider_type=AuthProviderType.EMAIL,
-        provider_account=normalize_email(email),
-        password_hash=password_hash,
-        is_primary=is_primary,
-        is_verified=is_verified,
+        provider=provider,
+        provider_subject=provider_subject,
+        provider_email=provider_subject if provider == AuthProvider.EMAIL else None,
+        provider_phone=provider_subject if provider == AuthProvider.PHONE else None,
+        password_credential=AuthPasswordCredential(password_hash=password_hash),
     )
-    session.add(auth_account)
+    session.add(identity)
     await session.flush()
-    return auth_account
+    return identity
+
+
+async def update_identity_last_login_at(
+    identity: AuthIdentity,
+    session: AsyncSession,
+) -> AuthIdentity:
+    identity.last_login_at = datetime.now(UTC)
+    await session.flush()
+    return identity

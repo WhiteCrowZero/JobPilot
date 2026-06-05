@@ -9,6 +9,7 @@ from starlette import status
 
 class AppError(Exception):
     def __init__(self, message: str, code: str, status_code: int = status.HTTP_400_BAD_REQUEST):
+        super().__init__(message)
         self.message = message
         self.code = code
         self.status_code = status_code
@@ -37,6 +38,15 @@ class UnauthorizedError(AppError):
 class BadRequestError(AppError):
     def __init__(self, message: str = "Bad request", code: str = "BAD_REQUEST"):
         super().__init__(message=message, code=code, status_code=status.HTTP_400_BAD_REQUEST)
+
+
+class ValidationError(AppError):
+    def __init__(self, message: str = "Validation error", code: str = "VALIDATION_ERROR"):
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
 
 
 async def app_error_handler(_: Request, exc: Exception) -> JSONResponse:

@@ -60,6 +60,7 @@ def build_app_resources(settings: Settings) -> AppResources:
     redis_client = Redis.from_url(
         settings.REDIS_URL,
         decode_responses=True,
+        socket_connect_timeout=3,
     )
 
     cache: CacheStore = RedisCacheStore(redis_client)

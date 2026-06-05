@@ -9,13 +9,12 @@ from job_pilot.modules.auth.exceptions import (
     InvalidTokenTypeError,
     TokenExpiredError,
 )
-from job_pilot.modules.auth.tokens import (
+from job_pilot.modules.auth.utils.tokens import (
     TokenType,
     create_access_token,
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
-    refresh_access_token,
 )
 
 
@@ -26,16 +25,7 @@ def test_access_token_contains_user_identity() -> None:
 
     assert token_data.user_id == 123
     assert token_data.sub == "123"
-    assert token_data.token_type is TokenType.ACCESS
-
-
-def test_refresh_token_can_create_new_access_token() -> None:
-    refresh_token = create_refresh_token(user_id=123)
-
-    access_token = refresh_access_token(refresh_token)
-    token_data = decode_access_token(access_token)
-
-    assert token_data.user_id == 123
+    assert token_data.jti
     assert token_data.token_type is TokenType.ACCESS
 
 

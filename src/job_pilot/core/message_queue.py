@@ -59,7 +59,11 @@ class RedisListMessageQueue:
     """基于 Redis List 的轻量消息队列。"""
 
     def __init__(self, redis_url: str, queue_name: str) -> None:
-        self._redis: Any = Redis.from_url(redis_url, decode_responses=True)
+        self._redis: Any = Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=3,
+        )
         self._queue_name = queue_name
 
     async def publish(self, event: DomainEvent) -> None:
