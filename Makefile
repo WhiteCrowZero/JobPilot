@@ -1,6 +1,6 @@
-.PHONY: install lint format type test check clean
+.PHONY: sync lint format type test check clean
 
-install:
+sync:
 	uv sync --all-extras --dev
 
 lint:
