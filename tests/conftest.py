@@ -70,7 +70,7 @@ async def app_resources() -> AsyncIterator[AppResources]:
 
 @pytest_asyncio.fixture
 async def db_session(app_resources: AppResources) -> AsyncIterator[AsyncSession]:
-    async with app_resources.database.session_factory() as session:
+    async with app_resources.require_database().session_factory() as session:
         await truncate_auth_user_tables(session)
         try:
             yield session

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import configure_mappers
 from sqlalchemy.sql import text
 
 from job_pilot.core.config import Settings
@@ -31,6 +32,8 @@ class DatabaseResource:
 
 
 def build_database_resource(settings: Settings) -> DatabaseResource:
+    load_sqlalchemy_models()
+
     engine = create_async_engine(
         settings.effective_database_url,
         echo=settings.DATABASE_ECHO,
@@ -51,3 +54,11 @@ def build_database_resource(settings: Settings) -> DatabaseResource:
         engine=engine,
         session_factory=session_factory,
     )
+
+
+def load_sqlalchemy_models() -> None:
+    """集中加载所有 ORM 模型，并提前校验 relationship 配置。"""
+
+    import job_pilot.db.models  # noqa: F401
+
+    configure_mappers()

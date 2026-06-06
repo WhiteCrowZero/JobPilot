@@ -17,3 +17,9 @@ AUTH_LOGIN_PHONE_ENDPOINT = api_path("/auth/login/phone")
 AUTH_REFRESH_ENDPOINT = api_path("/auth/refresh")
 AUTH_LOGOUT_ENDPOINT = api_path("/auth/logout")
 USERS_ME_ENDPOINT = api_path("/users/me")
+JOBS_ENDPOINT = api_path("/jobs")
+JOBS_FILTER_OPTIONS_ENDPOINT = api_path("/jobs/filter-options")
+
+
+def job_detail_endpoint(job_post_id: int) -> str:
+    return api_path(f"/jobs/{job_post_id}")

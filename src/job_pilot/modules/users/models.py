@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     Boolean,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -14,6 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from job_pilot.core.enums import enum_column
 from job_pilot.db.base import Base, SoftDeleteMixin, TimestampMixin
 from job_pilot.modules.users.enums import UserStatus
 
@@ -45,14 +45,7 @@ class User(TimestampMixin, SoftDeleteMixin, Base):
     )
 
     status: Mapped[UserStatus] = mapped_column(
-        Enum(
-            UserStatus,
-            name="user_status",
-            native_enum=False,
-            length=20,
-            create_constraint=True,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-        ),
+        enum_column(UserStatus, "user_status", 20),
         nullable=False,
         default=UserStatus.ACTIVE,
         server_default=UserStatus.ACTIVE.value,

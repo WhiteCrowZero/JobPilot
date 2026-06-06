@@ -45,7 +45,18 @@ class ValidationError(AppError):
         super().__init__(
             message=message,
             code=code,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+
+
+class ResourceUnavailableError(AppError):
+    def __init__(
+        self,
+        message: str = "Resource unavailable",
+        code: str = "RESOURCE_UNAVAILABLE",
+    ):
+        super().__init__(
+            message=message, code=code, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 

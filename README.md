@@ -166,7 +166,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
 |-----------------|-------------------------|-------------------------|
 | PostgreSQL      | 开发数据库                   | `127.0.0.1:5432`        |
 | PostgreSQL Test | 测试数据库                   | `127.0.0.1:5433`        |
-| Redis           | 缓存、Celery broker/result | `127.0.0.1:6479`        |
+| Redis           | 缓存、Celery broker/result | `127.0.0.1:6279`        |
 | pgAdmin         | PostgreSQL Web 管理       | `http://127.0.0.1:8180` |
 | Prometheus      | 指标采集与查询                 | `http://127.0.0.1:9090` |
 | Grafana         | 监控面板                    | `http://127.0.0.1:3000` |
@@ -177,8 +177,7 @@ pgAdmin 默认登录账号来自 `deploy/.env`：
 admin@jobpilot.com / jobpilot_pgadmin
 ```
 
-> 注意：`deploy/docker-compose.yml` 默认把 Redis 导出到 `6479`。如果使用 `deploy/.env.example` 或本机已有 Redis，请同步检查
-`.env` 中的 `REDIS_URL`、`CELERY_BROKER_URL`、`CELERY_RESULT_BACKEND` 端口。
+真实情况以 `deploy/.env` 为准。
 
 ### 7.3 启动后端
 
@@ -202,8 +201,17 @@ uv run alembic upgrade head
 
 ### 7.5 测试
 
+linux:
+
 ```bash
 APP_ENV=test uv run pytest
+```
+
+windows:
+
+```bash
+$env:APP_ENV='test'
+uv run pytest
 ```
 
 测试数据库使用 `.env.test` 中的配置，避免污染开发数据库。
@@ -224,6 +232,12 @@ uv run pytest tests/smoke --run-smoke
 ```
 
 smoke 测试默认请求 `http://127.0.0.1:8000`。普通 `uv run pytest` 只会收集并跳过 smoke 测试，不会请求真实服务。
+
+如果外部资源不同，可以检查`/health/readiness`接口，如果其中有资源出现问题，大概率是 Windows 的开放端口出现问题了（换成其他端口即可），检查命令：
+
+```bash
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
 
 ## 8. 开发路线
 

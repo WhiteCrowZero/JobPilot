@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -15,6 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from job_pilot.core.enums import enum_column
 from job_pilot.db.base import Base, TimestampMixin
 from job_pilot.modules.auth.enums import AuthProvider
 
@@ -79,14 +79,7 @@ class AuthIdentity(TimestampMixin, Base):
     )
 
     provider: Mapped[AuthProvider] = mapped_column(
-        Enum(
-            AuthProvider,
-            name="auth_provider",
-            native_enum=False,
-            length=30,
-            create_constraint=True,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-        ),
+        enum_column(AuthProvider, "auth_provider", 30),
         nullable=False,
         comment="登录身份提供方，例如 email、phone、github、google。",
     )

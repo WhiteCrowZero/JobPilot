@@ -1,49 +1,110 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from redis.asyncio import Redis
 
 from job_pilot.core.cache import CacheStore, DistributedLock, RedisCacheStore, RedisDistributedLock
 from job_pilot.core.config import Settings
+from job_pilot.core.exceptions import ResourceUnavailableError
 from job_pilot.core.message_queue import MessageQueue, build_message_queue
 from job_pilot.db.session import DatabaseResource, build_database_resource
-
-"""
-注意：
-这里 MQ 只是简单抽象，之后还需要完善
-Cache 和 Lock 暂时没问题
-"""
 
 
 class HealthCheckable(Protocol):
     async def health_check(self) -> bool: ...
 
 
-@dataclass
+@dataclass(slots=True, frozen=True)
+class ResourceSpec:
+    """进程资源声明，用于按需构建当前进程真正需要的连接资源。"""
+
+    database: bool = True
+    redis: bool = True
+    cache: bool = True
+    lock: bool = True
+    message_queue: bool = True
+    message_queue_backend: Literal["memory", "redis"] | None = None
+
+
+@dataclass(slots=True)
 class AppResources:
-    database: DatabaseResource
-    cache: CacheStore
-    lock: DistributedLock
-    redis_client: Redis
-    message_queue: MessageQueue
+    """应用/worker 进程持有的资源容器。
+
+    不同进程可以只构建自己需要的资源；业务入口通过 require_* 获取强类型资源。
+    """
+
+    database: DatabaseResource | None = None
+    cache: CacheStore | None = None
+    lock: DistributedLock | None = None
+    redis_client: Redis | None = None
+    message_queue: MessageQueue | None = None
 
     async def health_check(self) -> dict[str, bool]:
-        return {
-            "database": await self._check_health(self.database),
-            "redis": await self._check_redis(),
-            "message_queue": await self._check_health(self.message_queue),
-        }
+        result: dict[str, bool] = {}
+
+        if self.database is not None:
+            result["database"] = await self._check_health(self.database)
+        if self.redis_client is not None:
+            result["redis"] = await self._check_redis(self.redis_client)
+        if self.message_queue is not None:
+            result["message_queue"] = await self._check_health(self.message_queue)
+
+        return result
 
     async def close(self) -> None:
-        await self.message_queue.close()
-        await self.redis_client.aclose()
-        await self.database.close()
+        if self.message_queue is not None:
+            await self.message_queue.close()
+        if self.redis_client is not None:
+            await self.redis_client.aclose()
+        if self.database is not None:
+            await self.database.close()
 
-    async def _check_redis(self) -> bool:
+    def require_database(self) -> DatabaseResource:
+        if self.database is None:
+            raise ResourceUnavailableError(
+                "Database resource is not configured",
+                code="DATABASE_RESOURCE_UNAVAILABLE",
+            )
+        return self.database
+
+    def require_cache(self) -> CacheStore:
+        if self.cache is None:
+            raise ResourceUnavailableError(
+                "Cache resource is not configured",
+                code="CACHE_RESOURCE_UNAVAILABLE",
+            )
+        return self.cache
+
+    def require_lock(self) -> DistributedLock:
+        if self.lock is None:
+            raise ResourceUnavailableError(
+                "Distributed lock resource is not configured",
+                code="LOCK_RESOURCE_UNAVAILABLE",
+            )
+        return self.lock
+
+    def require_redis_client(self) -> Redis:
+        if self.redis_client is None:
+            raise ResourceUnavailableError(
+                "Redis resource is not configured",
+                code="REDIS_RESOURCE_UNAVAILABLE",
+            )
+        return self.redis_client
+
+    def require_message_queue(self) -> MessageQueue:
+        if self.message_queue is None:
+            raise ResourceUnavailableError(
+                "Message queue resource is not configured",
+                code="MESSAGE_QUEUE_RESOURCE_UNAVAILABLE",
+            )
+        return self.message_queue
+
+    @staticmethod
+    async def _check_redis(redis_client: Redis) -> bool:
         try:
-            return bool(await self.redis_client.ping())
+            return bool(await redis_client.ping())
         except Exception:
             return False
 
@@ -55,17 +116,41 @@ class AppResources:
             return False
 
 
-def build_app_resources(settings: Settings) -> AppResources:
-    database = build_database_resource(settings)
-    redis_client = Redis.from_url(
-        settings.REDIS_URL,
-        decode_responses=True,
-        socket_connect_timeout=3,
+def build_app_resources(
+    settings: Settings,
+    *,
+    spec: ResourceSpec | None = None,
+) -> AppResources:
+    """按资源声明构建进程资源，默认构建 FastAPI 所需的完整资源。"""
+
+    selected_spec = spec or ResourceSpec()
+
+    database = build_database_resource(settings) if selected_spec.database else None
+    redis_needed = selected_spec.redis or selected_spec.cache or selected_spec.lock
+    redis_client = (
+        Redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=3,
+        )
+        if redis_needed
+        else None
     )
 
-    cache: CacheStore = RedisCacheStore(redis_client)
-    lock: DistributedLock = RedisDistributedLock(redis_client)
-    message_queue = build_message_queue(settings)
+    cache: CacheStore | None = None
+    if selected_spec.cache:
+        redis_for_cache = _require_built_redis(redis_client, "cache")
+        cache = RedisCacheStore(redis_for_cache)
+
+    lock: DistributedLock | None = None
+    if selected_spec.lock:
+        redis_for_lock = _require_built_redis(redis_client, "lock")
+        lock = RedisDistributedLock(redis_for_lock)
+    message_queue = (
+        build_message_queue(settings, backend=selected_spec.message_queue_backend)
+        if selected_spec.message_queue
+        else None
+    )
 
     return AppResources(
         database=database,
@@ -74,3 +159,26 @@ def build_app_resources(settings: Settings) -> AppResources:
         redis_client=redis_client,
         message_queue=message_queue,
     )
+
+
+def build_database_only_resources(settings: Settings) -> AppResources:
+    """构建只需要数据库的脚本/worker 资源。"""
+
+    return build_app_resources(
+        settings,
+        spec=ResourceSpec(
+            redis=False,
+            cache=False,
+            lock=False,
+            message_queue=False,
+        ),
+    )
+
+
+def _require_built_redis(redis_client: Redis | None, resource_name: str) -> Redis:
+    if redis_client is None:
+        raise ResourceUnavailableError(
+            f"Redis resource is required to build {resource_name}",
+            code="REDIS_RESOURCE_REQUIRED",
+        )
+    return redis_client
