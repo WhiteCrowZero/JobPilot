@@ -13,10 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from job_pilot.core.config import settings
 from job_pilot.core.resources import build_database_only_resources
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
+from job_pilot.modules.ingestion.repository import build_raw_payload_hash
 from job_pilot.modules.ingestion.service import (
     JobSourceConfig,
     RawJobIngestionService,
-    build_raw_payload_hash,
 )
 
 DEFAULT_MYSQL_URL = "mysql+pymysql://root:123456@127.0.0.1:3306/spider_test"
@@ -29,7 +29,7 @@ IMPORT_SOURCE = "all"
 # IMPORT_SOURCE = "jaabz"
 
 # 每个来源表导入多少条数据
-IMPORT_LIMIT = 500
+IMPORT_LIMIT = 1
 
 # 来源 MySQL 数据库地址
 SOURCE_MYSQL_URL = os.getenv("JOBPILOT_SOURCE_MYSQL_URL", DEFAULT_MYSQL_URL)

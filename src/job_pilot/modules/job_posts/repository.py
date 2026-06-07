@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import cast
 
-from sqlalchemy import Select, and_, exists, func, literal, or_, select
+from sqlalchemy import Select, and_, exists, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
@@ -15,12 +14,6 @@ from job_pilot.modules.job_posts.models import (
     JobSource,
 )
 from job_pilot.modules.job_posts.schemas import JobPostSearchParams
-
-
-@dataclass(slots=True)
-class JobPostSearchResult:
-    items: list[JobPost]
-    total: int
 
 
 class JobPostRepository:
@@ -35,24 +28,28 @@ class JobPostRepository:
         self,
         db: AsyncSession,
         params: JobPostSearchParams,
-    ) -> JobPostSearchResult:
+    ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
 
-        count_stmt = self._build_count_stmt(base_stmt)
-        total = await db.scalar(count_stmt) or 0
+        page_id_stmt = (
+            self._apply_sort(base_stmt, params).offset(params.offset).limit(params.page_size)
+        )
+        id_result = await db.execute(page_id_stmt)
+        job_post_ids = list(id_result.scalars().all())
+        if not job_post_ids:
+            return []
 
-        page_stmt = (
-            self._apply_sort(base_stmt, params)
-            .offset(params.offset)
-            .limit(params.page_size)
+        entity_stmt = (
+            select(JobPost)
+            .where(JobPost.id.in_(job_post_ids))
             .options(
                 selectinload(JobPost.source),
                 selectinload(JobPost.detail),
             )
         )
-        result = await db.execute(page_stmt)
-        items = list(result.scalars().unique().all())
-        return JobPostSearchResult(items=items, total=total)
+        entity_result = await db.execute(entity_stmt)
+        job_posts_by_id = {job_post.id: job_post for job_post in entity_result.scalars().all()}
+        return [job_posts_by_id[job_post_id] for job_post_id in job_post_ids]
 
     async def get_job_post_detail(
         self,
@@ -75,8 +72,8 @@ class JobPostRepository:
         )
         return await db.scalar(stmt)
 
-    def _build_base_search_stmt(self, params: JobPostSearchParams) -> Select[tuple[JobPost]]:
-        stmt = select(JobPost).join(JobPost.source)
+    def _build_base_search_stmt(self, params: JobPostSearchParams) -> Select[tuple[int]]:
+        stmt = select(JobPost.id).join(JobPost.source)
         conditions: list[ColumnElement[bool]] = [JobPost.deleted_at.is_(None)]
 
         if params.statuses:
@@ -126,6 +123,7 @@ class JobPostRepository:
         if params.seen_to is not None:
             conditions.append(JobPost.last_seen_at <= params.seen_to)
 
+        # TODO: ES
         keyword = _clean_optional_text(params.keyword)
         if keyword is not None:
             keyword_like = f"%{keyword}%"
@@ -156,9 +154,9 @@ class JobPostRepository:
 
     def _apply_sort(
         self,
-        stmt: Select[tuple[JobPost]],
+        stmt: Select[tuple[int]],
         params: JobPostSearchParams,
-    ) -> Select[tuple[JobPost]]:
+    ) -> Select[tuple[int]]:
         # 排序字段必须白名单控制，不允许前端直接传数据库字段名。
         match params.sort:
             case "published_at_asc":
@@ -174,9 +172,6 @@ class JobPostRepository:
             case _:
                 return stmt.order_by(JobPost.published_at.desc().nulls_last(), JobPost.id.desc())
 
-    def _build_count_stmt(self, base_stmt: Select[tuple[JobPost]]) -> Select[tuple[int]]:
-        return select(func.count()).select_from(base_stmt.order_by(None).subquery())
-
 
 class JobPostLookupRepository:
     """筛选项候选值查询。"""
@@ -184,7 +179,9 @@ class JobPostLookupRepository:
     async def list_source_platforms(self, db: AsyncSession) -> list[str]:
         stmt = (
             select(JobSource.platform)
+            .join(JobPost, JobPost.source_id == JobSource.id)
             .where(JobSource.is_active.is_(True))
+            .where(*self._open_job_post_conditions())
             .distinct()
             .order_by(JobSource.platform)
         )
@@ -194,7 +191,7 @@ class JobPostLookupRepository:
     async def list_locations(self, db: AsyncSession) -> list[str]:
         stmt = (
             select(JobPost.locations)
-            .where(JobPost.locations.is_not(None))
+            .where(*self._open_job_post_conditions(), JobPost.locations.is_not(None))
             .distinct()
             .order_by(JobPost.locations)
         )
@@ -204,12 +201,18 @@ class JobPostLookupRepository:
     async def list_salary_currencies(self, db: AsyncSession) -> list[str]:
         stmt = (
             select(JobPost.salary_currency)
-            .where(JobPost.salary_currency.is_not(None))
+            .where(*self._open_job_post_conditions(), JobPost.salary_currency.is_not(None))
             .distinct()
             .order_by(JobPost.salary_currency)
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    def _open_job_post_conditions(self) -> list[ColumnElement[bool]]:
+        return [
+            JobPost.deleted_at.is_(None),
+            JobPost.status == JobPostStatus.OPEN,
+        ]
 
 
 def _clean_optional_text(value: str | None) -> str | None:

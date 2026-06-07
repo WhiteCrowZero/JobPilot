@@ -7,10 +7,17 @@ from urllib.parse import parse_qs, urlparse
 
 from job_pilot.modules.job_posts.enums import KnownJobSourcePlatform
 
+"""
+这里的 adapters 都不是固定死的，而是要根据“爬虫”数据及时更新的；因为
+1. 爬取的网页结构或者数据结构可能发生变化
+2. 可能会有新的数据源加入，则新增对应 adapter
+"""
+
 
 @dataclass(slots=True)
 class JobDraft:
-    """adapter 输出的中间结构。
+    """
+    adapter 输出的中间结构，之后供 normalization 处理录入，应尽可能保持稳定。
 
     adapter 只做来源字段到统一草稿字段的映射；
     枚举归一、地点拆分、经验/学历解析等规则放 normalization。
@@ -40,6 +47,10 @@ class JobDraft:
 
 
 class BaseJobAdapter(ABC):
+    """
+    负责字段映射
+    """
+
     source_platform: str
 
     @abstractmethod
@@ -54,7 +65,6 @@ class AlibabaJobAdapter(BaseJobAdapter):
         source_url = _first_text(raw_payload, "job_url", "url", "source_url")
         return JobDraft(
             source_platform=self.source_platform,
-            # 阿里样例里的 job_id 可能只是导入行号；URL 中的 positionId 更稳定，优先使用。
             external_job_id=_external_id_from_url(source_url, "positionId", "position_id")
             or _first_text(raw_payload, "position_id", "positionId", "job_id", "id"),
             source_url=source_url,

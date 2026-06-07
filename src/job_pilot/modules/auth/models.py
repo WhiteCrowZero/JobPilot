@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -44,20 +43,10 @@ class AuthIdentity(TimestampMixin, Base):
             "provider_subject",
             name="uq_auth_identities_provider_subject",
         ),
-        Index(
-            "ix_auth_identities_user_provider",
+        UniqueConstraint(
             "user_id",
             "provider",
-        ),
-        Index(
-            "ix_auth_identities_provider_email",
-            "provider",
-            "provider_email",
-        ),
-        Index(
-            "ix_auth_identities_provider_phone",
-            "provider",
-            "provider_phone",
+            name="uq_auth_identities_user_provider",
         ),
         {
             "comment": "用户登录身份表，保存邮箱、手机号、第三方账号等可登录身份。",
@@ -74,7 +63,6 @@ class AuthIdentity(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="所属用户 ID，关联 users.id。",
     )
 
@@ -99,14 +87,12 @@ class AuthIdentity(TimestampMixin, Base):
     provider_email: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
-        index=True,
         comment="提供方返回或用户绑定的邮箱地址。",
     )
 
     provider_phone: Mapped[str | None] = mapped_column(
         String(32),
         nullable=True,
-        index=True,
         comment="提供方返回或用户绑定的手机号。",
     )
 

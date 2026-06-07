@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,10 +25,18 @@ class RawJobRecord(TimestampMixin, Base):
 
     __tablename__ = "raw_job_records"
     __table_args__ = (
-        Index("ix_raw_job_records_source_external_job", "source_id", "external_job_id"),
-        Index("ix_raw_job_records_source_url", "source_id", "source_url"),
-        Index("ix_raw_job_records_raw_content_hash", "raw_content_hash"),
-        Index("ix_raw_job_records_status", "status"),
+        Index(
+            "ix_raw_job_records_source_external_job",
+            "source_id",
+            "external_job_id",
+            postgresql_where=text("external_job_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_raw_job_records_source_url",
+            "source_id",
+            "source_url",
+            postgresql_where=text("source_url IS NOT NULL"),
+        ),
         UniqueConstraint("message_id", name="uq_raw_job_records_message_id"),
         {
             "comment": "原始岗位记录表，保存爬虫或文件导入推来的 raw payload。",

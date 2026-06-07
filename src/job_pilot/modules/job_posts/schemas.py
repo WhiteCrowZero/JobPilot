@@ -92,7 +92,6 @@ class JobPostListResponse(BaseModel):
     """岗位分页列表响应。"""
 
     items: list[JobPostListItem]
-    total: int
     page: int
     page_size: int
 

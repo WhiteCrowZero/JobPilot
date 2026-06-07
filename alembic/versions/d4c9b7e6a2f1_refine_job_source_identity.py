@@ -5,6 +5,7 @@ Revises: b65af475e65b
 Create Date: 2026-06-06 21:20:00.000000
 
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -89,9 +90,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.execute(
-        "ALTER TABLE job_sources DROP CONSTRAINT IF EXISTS uq_job_sources_platform_base_url"
-    )
+    op.execute("ALTER TABLE job_sources DROP CONSTRAINT IF EXISTS uq_job_sources_platform_base_url")
     op.alter_column(
         "job_sources",
         "base_url",

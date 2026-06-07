@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from job_pilot.api.deps import DbSessionDep
+from job_pilot.api.deps import CurrentCacheStoreDep, DbSessionDep
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -82,10 +82,13 @@ async def search_job_posts(
 
 
 @router.get("/filter-options", response_model=JobPostFilterOptionsResponse)
-async def read_job_post_filter_options(session: DbSessionDep) -> JobPostFilterOptionsResponse:
+async def read_job_post_filter_options(
+    session: DbSessionDep,
+    cache: CurrentCacheStoreDep,
+) -> JobPostFilterOptionsResponse:
     """读取岗位筛选项候选值。"""
 
-    return await service.get_filter_options(session)
+    return await service.get_filter_options(session, cache)
 
 
 @router.get("/{job_post_id}", response_model=JobPostDetailResponse)

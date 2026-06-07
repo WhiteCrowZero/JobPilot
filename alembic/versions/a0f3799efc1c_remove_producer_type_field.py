@@ -7,6 +7,7 @@ Create Date: 2026-06-05 23:00:38.286036
 This revision is intentionally left as a no-op after the job-post schema was squashed
 for the MVP rebuild workflow.
 """
+
 from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.

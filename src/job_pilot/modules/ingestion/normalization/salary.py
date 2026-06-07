@@ -17,8 +17,14 @@ _CHINESE_SALARY_CONTEXT_KEYWORDS = (
 )
 # 尽量只截取像薪资的片段，避免把经验年限、日期误识别成薪资。
 _SALARY_SEGMENT_PATTERNS = [
-    re.compile(r"(?:usd|sgd|nzd|eur|gbp|\$|s\$|€|£)\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:k|w|万|千)?\s*[-~—–至到]\s*(?:usd|sgd|nzd|eur|gbp|\$|s\$|€|£)?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:k|w|万|千)?\s*(?:/\s*(?:year|yr|month|day|hour|h))?", re.I),
-    re.compile(r"(?:rmb|cny|人民币|￥|¥)?\s*\d+(?:\.\d+)?\s*(?:k|w|万|千|元)?\s*[-~—–至到]\s*(?:rmb|cny|人民币|￥|¥)?\s*\d+(?:\.\d+)?\s*(?:k|w|万|千|元)?\s*(?:/\s*(?:月|天|日|年|hour|hr|h|day|year|month|yr))?(?:\s*[·x×]\s*\d+\s*薪)?", re.I),
+    re.compile(
+        r"(?:usd|sgd|nzd|eur|gbp|\$|s\$|€|£)\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:k|w|万|千)?\s*[-~—–至到]\s*(?:usd|sgd|nzd|eur|gbp|\$|s\$|€|£)?\s*\d+(?:,\d{3})*(?:\.\d+)?\s*(?:k|w|万|千)?\s*(?:/\s*(?:year|yr|month|day|hour|h))?",
+        re.I,
+    ),
+    re.compile(
+        r"(?:rmb|cny|人民币|￥|¥)?\s*\d+(?:\.\d+)?\s*(?:k|w|万|千|元)?\s*[-~—–至到]\s*(?:rmb|cny|人民币|￥|¥)?\s*\d+(?:\.\d+)?\s*(?:k|w|万|千|元)?\s*(?:/\s*(?:月|天|日|年|hour|hr|h|day|year|month|yr))?(?:\s*[·x×]\s*\d+\s*薪)?",
+        re.I,
+    ),
     re.compile(r"\d+(?:\.\d+)?\s*(?:k|w|万|千)\s*(?:以上|起|\+)?", re.I),
 ]
 _NUMBER_PATTERN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")

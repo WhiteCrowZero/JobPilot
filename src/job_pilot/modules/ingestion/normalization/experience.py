@@ -19,7 +19,10 @@ def normalize_experience(raw_experience: object | None) -> NormalizedExperience:
         return NormalizedExperience(ExperienceLevel.UNKNOWN, None, None)
 
     lowered_text = experience_text.casefold()
-    if any(keyword in lowered_text for keyword in ("不限", "无经验", "经验不限", "no experience", "not required")):
+    if any(
+        keyword in lowered_text
+        for keyword in ("不限", "无经验", "经验不限", "no experience", "not required")
+    ):
         return NormalizedExperience(ExperienceLevel.NOT_APPLICABLE, None, None)
     if any(keyword in lowered_text for keyword in ("实习", "intern")):
         return NormalizedExperience(ExperienceLevel.INTERN, 0, 1)
@@ -30,10 +33,14 @@ def normalize_experience(raw_experience: object | None) -> NormalizedExperience:
     if not years:
         return NormalizedExperience(ExperienceLevel.UNKNOWN, None, None)
 
-    if any(keyword in lowered_text for keyword in ("以上", "及以上", "+", "至少", "minimum", "min")):
+    if any(
+        keyword in lowered_text for keyword in ("以上", "及以上", "+", "至少", "minimum", "min")
+    ):
         min_years = years[0]
         max_years = None
-    elif any(keyword in lowered_text for keyword in ("以内", "以下", "不超过", "less than", "under")):
+    elif any(
+        keyword in lowered_text for keyword in ("以内", "以下", "不超过", "less than", "under")
+    ):
         min_years = 0
         max_years = years[0]
     elif len(years) >= 2:

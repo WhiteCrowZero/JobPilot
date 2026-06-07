@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
+    text,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -94,11 +95,36 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
     __tablename__ = "job_posts"
     __table_args__ = (
         UniqueConstraint("fingerprint", name="uq_job_posts_fingerprint"),
-        Index("ix_job_posts_source_id", "source_id"),
-        Index("ix_job_posts_raw_record_id", "raw_record_id"),
-        Index("ix_job_posts_status_published_at", "status", "published_at"),
-        Index("ix_job_posts_status_created_at", "status", "created_at"),
-        Index("ix_job_posts_is_remote", "is_remote"),
+        Index(
+            "ix_job_posts_open_published_at_id",
+            text("published_at DESC NULLS LAST"),
+            text("id DESC"),
+            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_job_posts_open_published_at_asc_id",
+            text("published_at ASC NULLS LAST"),
+            text("id ASC"),
+            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_job_posts_open_created_at_id",
+            text("created_at DESC"),
+            text("id DESC"),
+            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_job_posts_open_salary_max_id",
+            text("salary_max DESC NULLS LAST"),
+            text("id DESC"),
+            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_job_posts_open_salary_min_id",
+            text("salary_min ASC NULLS LAST"),
+            text("id ASC"),
+            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
+        ),
         {
             "comment": "规范化岗位热数据表，用于列表、筛选、排序和状态判断。",
         },
@@ -114,12 +140,14 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("job_sources.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
         comment="来源 ID，关联 job_sources.id。",
     )
 
     raw_record_id: Mapped[int | None] = mapped_column(
         ForeignKey("raw_job_records.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
         comment="最近一次生成或更新该规范化岗位的原始记录 ID。",
     )
 
@@ -141,6 +169,8 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
         comment="公司名称。MVP 不单独拆 companies 表。",
     )
 
+    # TODO: location 之后可以考虑变成文本 + 经纬度，前端直接在地图上搜，这样就需要单独拆分一张表了
+    # TODO：目前直接的文本，没有分割；一方面清洗可以改一下，进行分割出来；另一方面，存储变成列表
     locations: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,

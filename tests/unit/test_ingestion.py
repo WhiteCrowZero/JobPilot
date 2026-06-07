@@ -257,8 +257,10 @@ async def test_ingestion_source_uses_platform_and_base_url_identity(
         await db_session.commit()
 
         sources = (
-            await db_session.execute(select(JobSource).order_by(JobSource.base_url))
-        ).scalars().all()
+            (await db_session.execute(select(JobSource).order_by(JobSource.base_url)))
+            .scalars()
+            .all()
+        )
 
         assert [(source.platform, source.name, source.base_url) for source in sources] == [
             ("alibaba", "阿里巴巴校招", "https://talent.taotian.com/campus"),

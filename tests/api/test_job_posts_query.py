@@ -38,7 +38,10 @@ async def test_search_job_posts_with_multiple_filters(
 
         assert response.status_code == 200
         payload = response.json()
-        assert payload["total"] == 1
+        assert "total" not in payload
+        assert len(payload["items"]) == 1
+        assert payload["page"] == 1
+        assert payload["page_size"] == 10
         assert payload["items"][0]["title"] == "后端开发工程师"
         assert payload["items"][0]["locations"] == "北京 / 中国"
     finally:
@@ -74,14 +77,40 @@ async def test_search_job_posts_supports_remote_and_status_filters(
         )
 
         assert default_response.status_code == 200
-        assert default_response.json()["total"] == 1
+        assert len(default_response.json()["items"]) == 1
         assert remote_response.status_code == 200
-        assert remote_response.json()["total"] == 1
+        assert len(remote_response.json()["items"]) == 1
         assert remote_response.json()["items"][0]["title"] == "Backend Engineer"
         assert remote_response.json()["items"][0]["is_remote"] is True
         assert closed_response.status_code == 200
-        assert closed_response.json()["total"] == 1
+        assert len(closed_response.json()["items"]) == 1
         assert closed_response.json()["items"][0]["status"] == "closed"
+    finally:
+        await truncate_job_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_search_job_posts_uses_page_pagination(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    await seed_job_posts(db_session)
+
+    try:
+        response = await api_client.get(
+            JOBS_ENDPOINT,
+            params={
+                "page": "2",
+                "page_size": "1",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["page"] == 2
+        assert payload["page_size"] == 1
+        assert len(payload["items"]) == 1
+        assert payload["items"][0]["title"] == "后端开发工程师"
     finally:
         await truncate_job_tables(db_session)
 
@@ -91,7 +120,11 @@ async def test_read_job_post_detail_and_filter_options(
     api_client: httpx.AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    await seed_job_posts(db_session)
+    closed_job_id = await seed_job_posts(db_session)
+    await db_session.execute(
+        update(JobPost).where(JobPost.id == closed_job_id).values(status=JobPostStatus.CLOSED)
+    )
+    await db_session.commit()
 
     try:
         job_post = await db_session.scalar(
@@ -114,10 +147,10 @@ async def test_read_job_post_detail_and_filter_options(
 
         assert filter_options_response.status_code == 200
         options_payload = filter_options_response.json()
-        assert "alibaba" in options_payload["source_platforms"]
+        assert "alibaba" not in options_payload["source_platforms"]
         assert "jaabz" in options_payload["source_platforms"]
-        assert "北京 / 中国" in options_payload["locations"]
-        assert "CNY" in options_payload["salary_currencies"]
+        assert "北京 / 中国" not in options_payload["locations"]
+        assert "Remote" in options_payload["locations"]
     finally:
         await truncate_job_tables(db_session)
 

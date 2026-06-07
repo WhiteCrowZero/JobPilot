@@ -49,7 +49,6 @@ class User(TimestampMixin, SoftDeleteMixin, Base):
         nullable=False,
         default=UserStatus.ACTIVE,
         server_default=UserStatus.ACTIVE.value,
-        index=True,
         comment="用户账号状态：active 可用，disabled 禁用，deleted 逻辑删除。",
     )
 

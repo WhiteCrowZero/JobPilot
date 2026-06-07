@@ -15,6 +15,11 @@ from .text import clean_long_text, clean_required_text, clean_text
 from .types import NormalizedJob
 from .workplace import normalize_workplace_type
 
+"""
+这里的 normalize 也不是固定死的，而是要根据“后端”数据及时更新的；因为
+后端业务字段可能发生变化
+"""
+
 
 def normalize_job_draft(draft: JobDraft) -> NormalizedJob:
     """把来源草稿统一清洗成 normalized tables 可写入的数据。"""

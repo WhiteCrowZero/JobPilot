@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.cache import CacheStore
 from job_pilot.core.exceptions import NotFoundError
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
@@ -23,6 +25,9 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostSearchParams,
 )
 
+FILTER_OPTIONS_CACHE_KEY = "job_posts:filter_options:open:v1"
+FILTER_OPTIONS_CACHE_TTL_SECONDS = 60 * 30
+
 
 class JobPostService:
     """岗位查询 service，负责查询编排和 ORM 到响应模型的转换。"""
@@ -40,10 +45,9 @@ class JobPostService:
         db: AsyncSession,
         params: JobPostSearchParams,
     ) -> JobPostListResponse:
-        result = await self.repository.search_job_posts(db=db, params=params)
+        job_posts = await self.repository.search_job_posts(db=db, params=params)
         return JobPostListResponse(
-            items=[self._to_list_item(job_post) for job_post in result.items],
-            total=result.total,
+            items=[self._to_list_item(job_post) for job_post in job_posts],
             page=params.page,
             page_size=params.page_size,
         )
@@ -56,10 +60,33 @@ class JobPostService:
         job_post = await self.repository.get_job_post_detail(db=db, job_post_id=job_post_id)
         if job_post is None:
             raise NotFoundError("Job post not found", code="JOB_POST_NOT_FOUND")
-        return self._to_detail_response(job_post)
+        list_item = self._to_list_item(job_post)
+        detail = job_post.detail
+        return JobPostDetailResponse(
+            **list_item.model_dump(),
+            source_url=detail.source_url if detail is not None else None,
+            company_url=detail.company_url if detail is not None else None,
+            description=detail.description if detail is not None else None,
+            has_visa_sponsorship=(detail.has_visa_sponsorship if detail is not None else None),
+            has_relocation_support=(detail.has_relocation_support if detail is not None else None),
+            work_authorization_note=(
+                detail.work_authorization_note if detail is not None else None
+            ),
+        )
 
-    async def get_filter_options(self, db: AsyncSession) -> JobPostFilterOptionsResponse:
-        return JobPostFilterOptionsResponse(
+    async def get_filter_options(
+        self,
+        db: AsyncSession,
+        cache: CacheStore,
+    ) -> JobPostFilterOptionsResponse:
+        cached_value = await cache.get(FILTER_OPTIONS_CACHE_KEY)
+        if isinstance(cached_value, dict):
+            try:
+                return JobPostFilterOptionsResponse.model_validate(cached_value)
+            except ValidationError:
+                await cache.delete(FILTER_OPTIONS_CACHE_KEY)
+
+        response = JobPostFilterOptionsResponse(
             source_platforms=await self.lookup_repository.list_source_platforms(db),
             statuses=list(JobPostStatus),
             employment_types=list(EmploymentType),
@@ -69,27 +96,15 @@ class JobPostService:
             salary_currencies=await self.lookup_repository.list_salary_currencies(db),
             locations=await self.lookup_repository.list_locations(db),
         )
-
-    def _to_detail_response(self, job_post: JobPost) -> JobPostDetailResponse:
-        list_item = self._to_list_item(job_post)
-        detail = job_post.detail
-        return JobPostDetailResponse(
-            **list_item.model_dump(),
-            source_url=detail.source_url if detail is not None else None,
-            company_url=detail.company_url if detail is not None else None,
-            description=detail.description if detail is not None else None,
-            has_visa_sponsorship=(
-                detail.has_visa_sponsorship if detail is not None else None
-            ),
-            has_relocation_support=(
-                detail.has_relocation_support if detail is not None else None
-            ),
-            work_authorization_note=(
-                detail.work_authorization_note if detail is not None else None
-            ),
+        await cache.set(
+            FILTER_OPTIONS_CACHE_KEY,
+            response.model_dump(mode="json"),
+            ttl_seconds=FILTER_OPTIONS_CACHE_TTL_SECONDS,
         )
+        return response
 
-    def _to_list_item(self, job_post: JobPost) -> JobPostListItem:
+    @staticmethod
+    def _to_list_item(job_post: JobPost) -> JobPostListItem:
         return JobPostListItem(
             id=job_post.id,
             source_platform=job_post.source.platform,
