@@ -63,6 +63,27 @@ class Settings(BaseSettings):
     ]
 
     LOG_LEVEL: str = "INFO"
+    LOG_CONSOLE_LEVEL: str | None = None
+    LOG_FILE_LEVEL: str | None = None
+    LOG_DIR: Path = Path("./logs")
+    LOG_CONSOLE_ENABLED: bool = True
+    LOG_CONSOLE_COLOR: bool = True
+    LOG_FILE_ENABLED: bool = True
+    LOG_FILE_MAX_BYTES: int = 10 * 1024 * 1024
+    LOG_FILE_BACKUP_COUNT: int = 5
+    LOG_SUPPRESS_FRAMEWORK_LOGS: bool = True
+    LOG_REQUEST_ENABLED: bool = True
+    LOG_REQUEST_SKIP_PATHS: list[str] = [
+        "/health",
+        "/health/readiness",
+        "/api/v1/health",
+        "/api/v1/health/readiness",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/api/v1/openapi.json",
+        "/favicon.ico",
+    ]
 
     @field_validator("API_PREFIX")
     @classmethod

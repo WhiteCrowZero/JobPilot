@@ -3,17 +3,26 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 
-from sqlalchemy import case, func, literal_column, select
+from sqlalchemy import case, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.exceptions import ResourceUnavailableError
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.enums import RawJobRecordStatus
 from job_pilot.modules.ingestion.models import RawJobRecord
 from job_pilot.modules.ingestion.normalization import NormalizedJob
-from job_pilot.modules.job_posts.enums import JobPostStatus
+from job_pilot.modules.job_posts.enums import (
+    EducationLevel,
+    EmploymentType,
+    ExperienceLevel,
+    JobPostStatus,
+    WorkplaceType,
+)
 from job_pilot.modules.job_posts.models import (
     JobPost,
     JobPostDetail,
@@ -28,12 +37,28 @@ def build_raw_payload_hash(raw_payload: Mapping[str, object]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+class RawRecordIngestionAction(StrEnum):
+    """raw 消息写入后的下一步动作。"""
+
+    PROCESS = "process"
+    DUPLICATE_MESSAGE = "duplicate_message"
+    DUPLICATE_RAW = "duplicate_raw"
+
+
+@dataclass(slots=True, frozen=True)
+class RawRecordWriteResult:
+    """raw 记录写入结果，供 service 决定是否进入清洗。"""
+
+    raw_record: RawJobRecord
+    action: RawRecordIngestionAction
+
+
 class RawJobIngestionRepository:
     """
     原始岗位摄入相关数据库操作。
 
-    插入重复时更新（有则更新，无则插入）
-    更新部分有效字段，避免无效字段覆盖原本有效字段
+    raw 表按 message_id、source_id + raw_content_hash 分层判断幂等；
+    业务岗位表按 fingerprint upsert，并尽量避免空值覆盖旧有效值。
     """
 
     async def get_or_create_source(
@@ -67,15 +92,45 @@ class RawJobIngestionRepository:
         await db.flush()
         return source
 
-    async def upsert_raw_record(
+    async def prepare_raw_record(
         self,
         *,
         db: AsyncSession,
         source_id: int,
         message: RawJobCollectedMessage,
-    ) -> RawJobRecord:
+    ) -> RawRecordWriteResult:
+        """按消息幂等和 raw 内容去重语义准备 raw 记录。"""
+
         now = datetime.now(UTC)
+
+        existing_message_record = await self.get_raw_record_by_message_id(
+            db=db,
+            message_id=message.message_id,
+        )
+        if existing_message_record is not None:
+            return RawRecordWriteResult(
+                raw_record=existing_message_record,
+                action=RawRecordIngestionAction.DUPLICATE_MESSAGE,
+            )
+
         raw_content_hash = build_raw_payload_hash(message.raw_payload)
+        existing_raw_record = await self.get_raw_record_by_source_hash(
+            db=db,
+            source_id=source_id,
+            raw_content_hash=raw_content_hash,
+        )
+        if existing_raw_record is not None:
+            await self.mark_raw_record_seen_again(
+                db=db,
+                raw_record=existing_raw_record,
+                message=message,
+                seen_at=now,
+            )
+            return RawRecordWriteResult(
+                raw_record=existing_raw_record,
+                action=RawRecordIngestionAction.DUPLICATE_RAW,
+            )
+
         insert_stmt = pg_insert(RawJobRecord).values(
             source_id=source_id,
             message_id=message.message_id,
@@ -92,53 +147,121 @@ class RawJobIngestionRepository:
             processed_at=None,
             first_seen_at=now,
             last_seen_at=now,
+            seen_count=1,
         )
-        excluded = insert_stmt.excluded
-
-        result = await db.execute(
-            insert_stmt.on_conflict_do_update(
-                constraint="uq_raw_job_records_message_id",
-                set_={
-                    "source_id": source_id,
-                    "trace_id": case(
-                        (func.nullif(excluded.trace_id, "").is_not(None), excluded.trace_id),
-                        else_=RawJobRecord.trace_id,
-                    ),
-                    "producer": case(
-                        (func.nullif(excluded.producer, "").is_not(None), excluded.producer),
-                        else_=RawJobRecord.producer,
-                    ),
-                    "external_job_id": case(
-                        (
-                            func.nullif(excluded.external_job_id, "").is_not(None),
-                            excluded.external_job_id,
-                        ),
-                        else_=RawJobRecord.external_job_id,
-                    ),
-                    "source_url": case(
-                        (func.nullif(excluded.source_url, "").is_not(None), excluded.source_url),
-                        else_=RawJobRecord.source_url,
-                    ),
-                    "raw_content_hash": raw_content_hash,
-                    "raw_payload": excluded.raw_payload,
-                    "status": RawJobRecordStatus.RECEIVED,
-                    "error_message": None,
-                    "fetched_at": case(
-                        (excluded.fetched_at.is_not(None), excluded.fetched_at),
-                        else_=RawJobRecord.fetched_at,
-                    ),
-                    "received_at": now,
-                    "processed_at": None,
-                    "first_seen_at": func.coalesce(RawJobRecord.first_seen_at, now),
-                    "last_seen_at": now,
-                    "updated_at": now,
-                },
-            )
+        inserted_result = await db.execute(
+            insert_stmt.on_conflict_do_nothing()
             .returning(RawJobRecord)
             .execution_options(populate_existing=True)
         )
-        raw_record = result.scalar_one()
-        return raw_record
+        inserted_raw_record = inserted_result.scalar_one_or_none()
+        if inserted_raw_record is not None:
+            return RawRecordWriteResult(
+                raw_record=inserted_raw_record,
+                action=RawRecordIngestionAction.PROCESS,
+            )
+
+        conflict_message_record = await self.get_raw_record_by_message_id(
+            db=db,
+            message_id=message.message_id,
+        )
+        if conflict_message_record is not None:
+            return RawRecordWriteResult(
+                raw_record=conflict_message_record,
+                action=RawRecordIngestionAction.DUPLICATE_MESSAGE,
+            )
+
+        conflict_raw_record = await self.get_raw_record_by_source_hash(
+            db=db,
+            source_id=source_id,
+            raw_content_hash=raw_content_hash,
+        )
+        if conflict_raw_record is None:
+            raise ResourceUnavailableError(
+                "raw_job_records insert conflict could not be classified",
+                code="RAW_RECORD_CONFLICT_UNCLASSIFIED",
+            )
+        await self.mark_raw_record_seen_again(
+            db=db,
+            raw_record=conflict_raw_record,
+            message=message,
+            seen_at=now,
+        )
+        return RawRecordWriteResult(
+            raw_record=conflict_raw_record,
+            action=RawRecordIngestionAction.DUPLICATE_RAW,
+        )
+
+    async def get_raw_record_by_message_id(
+        self,
+        *,
+        db: AsyncSession,
+        message_id: str,
+    ) -> RawJobRecord | None:
+        """查询同 message_id 的 raw 记录，用于 MQ 重复投递幂等。"""
+
+        result = await db.execute(select(RawJobRecord).where(RawJobRecord.message_id == message_id))
+        return result.scalar_one_or_none()
+
+    async def get_raw_record_by_source_hash(
+        self,
+        *,
+        db: AsyncSession,
+        source_id: int,
+        raw_content_hash: str,
+    ) -> RawJobRecord | None:
+        """查询同来源同 raw hash 的记录，用于爬虫重复内容去重。"""
+
+        result = await db.execute(
+            select(RawJobRecord).where(
+                RawJobRecord.source_id == source_id,
+                RawJobRecord.raw_content_hash == raw_content_hash,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def mark_raw_record_seen_again(
+        self,
+        *,
+        db: AsyncSession,
+        raw_record: RawJobRecord,
+        message: RawJobCollectedMessage,
+        seen_at: datetime,
+    ) -> None:
+        """重复 raw 内容只更新观测字段，不重置处理状态。"""
+
+        raw_record.last_seen_at = seen_at
+        raw_record.seen_count += 1
+        if message.trace_id:
+            raw_record.trace_id = message.trace_id
+        if message.producer:
+            raw_record.producer = message.producer
+        if message.source_url and not raw_record.source_url:
+            raw_record.source_url = message.source_url
+        if message.external_job_id and not raw_record.external_job_id:
+            raw_record.external_job_id = message.external_job_id
+        await db.execute(
+            update(JobPost)
+            .where(JobPost.raw_record_id == raw_record.id)
+            .values(last_seen_at=seen_at, updated_at=seen_at)
+        )
+        await db.flush()
+
+    async def get_job_post_id_by_raw_record(
+        self,
+        *,
+        db: AsyncSession,
+        raw_record_id: int,
+    ) -> int | None:
+        """查找当前仍关联该 raw 记录的业务岗位 ID。"""
+
+        result = await db.execute(
+            select(JobPost.id)
+            .where(JobPost.raw_record_id == raw_record_id)
+            .order_by(JobPost.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def upsert_job_post(
         self,
@@ -180,21 +303,78 @@ class RawJobIngestionRepository:
                 set_={
                     "source_id": source_id,
                     "raw_record_id": raw_record_id,
-                    "title": excluded.title,
-                    "company_name": excluded.company_name,
-                    "locations": excluded.locations,
+                    "title": case(
+                        (func.nullif(excluded.title, "").is_not(None), excluded.title),
+                        else_=JobPost.title,
+                    ),
+                    "company_name": case(
+                        (
+                            func.nullif(excluded.company_name, "").is_not(None),
+                            excluded.company_name,
+                        ),
+                        else_=JobPost.company_name,
+                    ),
+                    "locations": case(
+                        (func.nullif(excluded.locations, "").is_not(None), excluded.locations),
+                        else_=JobPost.locations,
+                    ),
                     "is_remote": excluded.is_remote,
-                    "employment_type": excluded.employment_type,
-                    "workplace_type": excluded.workplace_type,
-                    "experience_level": excluded.experience_level,
-                    "experience_min_years": excluded.experience_min_years,
-                    "experience_max_years": excluded.experience_max_years,
-                    "education_level": excluded.education_level,
-                    "salary_text": excluded.salary_text,
-                    "salary_min": excluded.salary_min,
-                    "salary_max": excluded.salary_max,
-                    "salary_currency": excluded.salary_currency,
-                    "published_at": excluded.published_at,
+                    "employment_type": case(
+                        (
+                            excluded.employment_type != EmploymentType.UNKNOWN,
+                            excluded.employment_type,
+                        ),
+                        else_=JobPost.employment_type,
+                    ),
+                    "workplace_type": case(
+                        (excluded.workplace_type != WorkplaceType.UNKNOWN, excluded.workplace_type),
+                        else_=JobPost.workplace_type,
+                    ),
+                    "experience_level": case(
+                        (
+                            excluded.experience_level != ExperienceLevel.UNKNOWN,
+                            excluded.experience_level,
+                        ),
+                        else_=JobPost.experience_level,
+                    ),
+                    "experience_min_years": case(
+                        (excluded.experience_min_years.is_not(None), excluded.experience_min_years),
+                        else_=JobPost.experience_min_years,
+                    ),
+                    "experience_max_years": case(
+                        (excluded.experience_max_years.is_not(None), excluded.experience_max_years),
+                        else_=JobPost.experience_max_years,
+                    ),
+                    "education_level": case(
+                        (
+                            excluded.education_level != EducationLevel.UNKNOWN,
+                            excluded.education_level,
+                        ),
+                        else_=JobPost.education_level,
+                    ),
+                    "salary_text": case(
+                        (func.nullif(excluded.salary_text, "").is_not(None), excluded.salary_text),
+                        else_=JobPost.salary_text,
+                    ),
+                    "salary_min": case(
+                        (excluded.salary_min.is_not(None), excluded.salary_min),
+                        else_=JobPost.salary_min,
+                    ),
+                    "salary_max": case(
+                        (excluded.salary_max.is_not(None), excluded.salary_max),
+                        else_=JobPost.salary_max,
+                    ),
+                    "salary_currency": case(
+                        (
+                            func.nullif(excluded.salary_currency, "").is_not(None),
+                            excluded.salary_currency,
+                        ),
+                        else_=JobPost.salary_currency,
+                    ),
+                    "published_at": case(
+                        (excluded.published_at.is_not(None), excluded.published_at),
+                        else_=JobPost.published_at,
+                    ),
                     "first_seen_at": func.coalesce(JobPost.first_seen_at, now),
                     "last_seen_at": now,
                     "status": JobPostStatus.OPEN,
@@ -230,12 +410,39 @@ class RawJobIngestionRepository:
             insert_stmt.on_conflict_do_update(
                 index_elements=[JobPostDetail.job_post_id],
                 set_={
-                    "source_url": excluded.source_url,
-                    "company_url": excluded.company_url,
-                    "description": excluded.description,
-                    "has_visa_sponsorship": excluded.has_visa_sponsorship,
-                    "has_relocation_support": excluded.has_relocation_support,
-                    "work_authorization_note": excluded.work_authorization_note,
+                    "source_url": case(
+                        (func.nullif(excluded.source_url, "").is_not(None), excluded.source_url),
+                        else_=JobPostDetail.source_url,
+                    ),
+                    "company_url": case(
+                        (func.nullif(excluded.company_url, "").is_not(None), excluded.company_url),
+                        else_=JobPostDetail.company_url,
+                    ),
+                    "description": case(
+                        (func.nullif(excluded.description, "").is_not(None), excluded.description),
+                        else_=JobPostDetail.description,
+                    ),
+                    "has_visa_sponsorship": case(
+                        (
+                            excluded.has_visa_sponsorship.is_(True),
+                            excluded.has_visa_sponsorship,
+                        ),
+                        else_=JobPostDetail.has_visa_sponsorship,
+                    ),
+                    "has_relocation_support": case(
+                        (
+                            excluded.has_relocation_support.is_(True),
+                            excluded.has_relocation_support,
+                        ),
+                        else_=JobPostDetail.has_relocation_support,
+                    ),
+                    "work_authorization_note": case(
+                        (
+                            func.nullif(excluded.work_authorization_note, "").is_not(None),
+                            excluded.work_authorization_note,
+                        ),
+                        else_=JobPostDetail.work_authorization_note,
+                    ),
                     "updated_at": now,
                 },
             )

@@ -31,8 +31,8 @@ class JobPostRepository:
     ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
 
-        page_id_stmt = (
-            self._apply_sort(base_stmt, params).offset(params.offset).limit(params.page_size)
+        page_id_stmt = self._apply_sort(base_stmt, params).offset(params.offset).limit(
+            params.limit + 1
         )
         id_result = await db.execute(page_id_stmt)
         job_post_ids = list(id_result.scalars().all())

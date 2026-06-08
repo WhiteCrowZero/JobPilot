@@ -3,7 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +48,11 @@ class RawJobRecord(TimestampMixin, Base):
             postgresql_where=text("source_url IS NOT NULL"),
         ),
         UniqueConstraint("message_id", name="uq_raw_job_records_message_id"),
+        UniqueConstraint(
+            "source_id",
+            "raw_content_hash",
+            name="uq_raw_job_records_source_hash",
+        ),
         {
             "comment": "原始岗位记录表，保存爬虫或文件导入推来的 raw payload。",
         },
@@ -141,6 +156,14 @@ class RawJobRecord(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
         comment="系统最近一次看到该来源记录的时间。",
+    )
+
+    seen_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+        comment="同一来源 raw 内容被重复看到的次数。",
     )
 
     source: Mapped[JobSource] = relationship(

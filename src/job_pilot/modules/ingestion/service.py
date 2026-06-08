@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +9,12 @@ from job_pilot.core.exceptions import AppError, BadRequestError
 from job_pilot.modules.ingestion.adapters import BaseJobAdapter, get_job_adapter
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.normalization import normalize_job_draft
-from job_pilot.modules.ingestion.repository import RawJobIngestionRepository
+from job_pilot.modules.ingestion.repository import (
+    RawJobIngestionRepository,
+    RawRecordIngestionAction,
+)
+
+logger = logging.getLogger(__name__)
 
 # TODO：之后引入MQ和Celery处理消息
 
@@ -18,8 +24,9 @@ class RawJobIngestionResult:
     """单条 raw job message 消费结果，便于脚本和 worker 记录进度。"""
 
     raw_record_id: int
-    job_post_id: int
+    job_post_id: int | None
     created_job_post: bool
+    action: RawRecordIngestionAction
 
 
 @dataclass(slots=True, frozen=True)
@@ -60,11 +67,34 @@ class RawJobIngestionService:
             name=self.source_config.name,
             base_url=self.source_config.base_url,
         )
-        raw_record = await self.repository.upsert_raw_record(
+        raw_record_result = await self.repository.prepare_raw_record(
             db=session,
             source_id=source.id,
             message=message,
         )
+        raw_record = raw_record_result.raw_record
+
+        if raw_record_result.action != RawRecordIngestionAction.PROCESS:
+            job_post_id = await self.repository.get_job_post_id_by_raw_record(
+                db=session,
+                raw_record_id=raw_record.id,
+            )
+            logger.info(
+                "Raw job message skipped by ingestion idempotency",
+                extra={
+                    "source_platform": message.source_platform,
+                    "external_job_id": message.external_job_id,
+                    "message_id": message.message_id,
+                    "raw_record_id": raw_record.id,
+                    "action": raw_record_result.action,
+                },
+            )
+            return RawJobIngestionResult(
+                raw_record_id=raw_record.id,
+                job_post_id=job_post_id,
+                created_job_post=False,
+                action=raw_record_result.action,
+            )
 
         try:
             adapter = self._get_adapter(message.source_platform)
@@ -91,6 +121,16 @@ class RawJobIngestionService:
                 raw_record=raw_record,
                 error_message=exc.message,
             )
+            logger.warning(
+                "Raw job message failed business validation",
+                extra={
+                    "source_platform": message.source_platform,
+                    "external_job_id": message.external_job_id,
+                    "message_id": message.message_id,
+                    "raw_record_id": raw_record.id,
+                    "error_code": exc.code,
+                },
+            )
             raise
         except Exception as exc:
             await self.repository.mark_raw_record_failed(
@@ -98,12 +138,22 @@ class RawJobIngestionService:
                 raw_record=raw_record,
                 error_message=str(exc),
             )
+            logger.exception(
+                "Raw job message failed during normalization",
+                extra={
+                    "source_platform": message.source_platform,
+                    "external_job_id": message.external_job_id,
+                    "message_id": message.message_id,
+                    "raw_record_id": raw_record.id,
+                },
+            )
             raise
 
         return RawJobIngestionResult(
             raw_record_id=raw_record.id,
             job_post_id=job_post.id,
             created_job_post=created_job_post_flag,
+            action=RawRecordIngestionAction.PROCESS,
         )
 
     def _normalize_source_config(self, source_config: JobSourceConfig) -> JobSourceConfig:

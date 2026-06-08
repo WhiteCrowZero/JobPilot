@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +30,8 @@ from job_pilot.modules.job_posts.schemas import (
 FILTER_OPTIONS_CACHE_KEY = "job_posts:filter_options:open:v1"
 FILTER_OPTIONS_CACHE_TTL_SECONDS = 60 * 30
 
+logger = logging.getLogger(__name__)
+
 
 class JobPostService:
     """岗位查询 service，负责查询编排和 ORM 到响应模型的转换。"""
@@ -46,10 +50,14 @@ class JobPostService:
         params: JobPostSearchParams,
     ) -> JobPostListResponse:
         job_posts = await self.repository.search_job_posts(db=db, params=params)
+        has_next = len(job_posts) > params.page_size
+        page_items = job_posts[: params.page_size]
         return JobPostListResponse(
-            items=[self._to_list_item(job_post) for job_post in job_posts],
+            items=[self._to_list_item(job_post) for job_post in page_items],
             page=params.page,
             page_size=params.page_size,
+            total=None,
+            has_next=has_next,
         )
 
     async def get_job_post_detail(
@@ -84,6 +92,10 @@ class JobPostService:
             try:
                 return JobPostFilterOptionsResponse.model_validate(cached_value)
             except ValidationError:
+                logger.warning(
+                    "Job post filter options cache payload was invalid",
+                    extra={"cache_key": FILTER_OPTIONS_CACHE_KEY},
+                )
                 await cache.delete(FILTER_OPTIONS_CACHE_KEY)
 
         response = JobPostFilterOptionsResponse(

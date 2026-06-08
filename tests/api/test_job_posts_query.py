@@ -38,10 +38,11 @@ async def test_search_job_posts_with_multiple_filters(
 
         assert response.status_code == 200
         payload = response.json()
-        assert "total" not in payload
         assert len(payload["items"]) == 1
         assert payload["page"] == 1
         assert payload["page_size"] == 10
+        assert payload["total"] is None
+        assert payload["has_next"] is False
         assert payload["items"][0]["title"] == "后端开发工程师"
         assert payload["items"][0]["locations"] == "北京 / 中国"
     finally:
@@ -97,7 +98,14 @@ async def test_search_job_posts_uses_page_pagination(
     await seed_job_posts(db_session)
 
     try:
-        response = await api_client.get(
+        first_page_response = await api_client.get(
+            JOBS_ENDPOINT,
+            params={
+                "page": "1",
+                "page_size": "1",
+            },
+        )
+        second_page_response = await api_client.get(
             JOBS_ENDPOINT,
             params={
                 "page": "2",
@@ -105,12 +113,22 @@ async def test_search_job_posts_uses_page_pagination(
             },
         )
 
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["page"] == 2
-        assert payload["page_size"] == 1
-        assert len(payload["items"]) == 1
-        assert payload["items"][0]["title"] == "后端开发工程师"
+        assert first_page_response.status_code == 200
+        first_page_payload = first_page_response.json()
+        assert first_page_payload["page"] == 1
+        assert first_page_payload["page_size"] == 1
+        assert first_page_payload["total"] is None
+        assert first_page_payload["has_next"] is True
+        assert len(first_page_payload["items"]) == 1
+
+        assert second_page_response.status_code == 200
+        second_page_payload = second_page_response.json()
+        assert second_page_payload["page"] == 2
+        assert second_page_payload["page_size"] == 1
+        assert second_page_payload["total"] is None
+        assert second_page_payload["has_next"] is False
+        assert len(second_page_payload["items"]) == 1
+        assert second_page_payload["items"][0]["title"] == "后端开发工程师"
     finally:
         await truncate_job_tables(db_session)
 
@@ -227,6 +245,7 @@ async def seed_job_posts(session: AsyncSession) -> int:
         ),
     )
     await session.commit()
+    assert alibaba_result.job_post_id is not None
     return alibaba_result.job_post_id
 
 

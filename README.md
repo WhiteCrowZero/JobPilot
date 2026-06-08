@@ -52,7 +52,7 @@ src/job_pilot/modules/
   system/           # 健康检查、后台任务、缓存、日志等系统模块
 ```
 
-第一阶段只实现核心闭环，不强行完成所有模块。模块目录先作为领域边界存在，具体实现按开发路线逐步补齐。
+MVP 阶段只实现核心闭环，不强行完成所有模块。模块目录先作为领域边界存在，具体实现按开发路线逐步补齐。
 
 **当前实现状态**
 
@@ -179,6 +179,18 @@ http://127.0.0.1:8000/api/v1/health
 ```bash
 uv run alembic revision --autogenerate -m "your message"
 uv run alembic upgrade head
+```
+
+查看当前版本：
+
+```bash
+alembic current
+```
+
+回滚：
+
+```bash
+alembic downgrade -1
 ```
 
 ### 7.5 测试

@@ -83,6 +83,7 @@ JobPilot/
 |-- .env.test
 |-- .gitignore
 |-- .dockerignore
+|-- .github
 |-- alembic.ini
 |-- alembic/
 |   |-- env.py
@@ -92,8 +93,7 @@ JobPilot/
 |   |-- Dockerfile
 |   `-- docker-compose.yml
 |-- docs/
-|   |-- 思路草稿.md
-|   `-- 项目规划.md
+|   `-- 八股文档/
 |-- logs/
 |-- src/
 |   `-- job_pilot/
@@ -115,7 +115,6 @@ JobPilot/
 |       |   |-- models.py
 |       |   `-- session.py
 |       |-- modules/
-|       |   |-- __init__.py
 |       |   |-- auth/
 |       |   |-- users/
 |       |   |-- job_posts/
@@ -129,7 +128,6 @@ JobPilot/
 |       |   |-- questions/
 |       |   |-- ingestion/
 |       |   `-- system/
-|       |-- utils/
 |       `-- workers/
 |           `-- celery_app.py
 `-- tests/

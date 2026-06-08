@@ -3,6 +3,7 @@ from __future__ import annotations
 import fnmatch
 import subprocess
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 # =========================
@@ -13,11 +14,14 @@ from pathlib import Path
 # 项目根目录：当前脚本放在 scripts/zip_tools.py，所以取 parents[1]
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# 是否包含日期
+WITH_DATE = False
+
 # clean.ps1 路径
 CLEAN_SCRIPT = PROJECT_ROOT / "scripts" / "clean.ps1"
 
 # 打包输出目录
-OUTPUT_DIR = PROJECT_ROOT
+OUTPUT_DIR = PROJECT_ROOT / "dist"
 
 # 压缩包名称前缀
 ZIP_NAME_PREFIX = "JobPilot"
@@ -88,13 +92,7 @@ VERBOSE = False
 
 
 def run_clean_script() -> None:
-    """调用 clean.ps1 清理缓存。
-
-    关键点：
-    - 必须加 -NoProfile，避免加载用户 PowerShell profile。
-    - 你的报错 Remove-Variable CondaModuleArgs 基本就是 profile/conda 初始化脚本引起的，
-      不是 clean.ps1 本身清理 __pycache__ 的核心逻辑失败。
-    """
+    """调用 clean.ps1 清理缓存。"""
 
     if not RUN_CLEAN_SCRIPT:
         print("[skip] RUN_CLEAN_SCRIPT = False")
@@ -155,7 +153,11 @@ def is_excluded(path: Path) -> bool:
 
 
 def build_zip_path() -> Path:
-    return OUTPUT_DIR / f"{ZIP_NAME_PREFIX}.zip"
+    if WITH_DATE:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        return OUTPUT_DIR / f"{ZIP_NAME_PREFIX}_{date_str}.zip"
+    else:
+        return OUTPUT_DIR / f"{ZIP_NAME_PREFIX}.zip"
 
 
 def pack_project() -> Path:

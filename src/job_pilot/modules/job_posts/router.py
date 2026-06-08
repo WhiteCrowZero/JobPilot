@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from job_pilot.api.deps import CurrentCacheStoreDep, DbSessionDep
+from job_pilot.core.pagination import PageParams
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -29,6 +30,7 @@ service = JobPostService()
 @router.get("", response_model=JobPostListResponse)
 async def search_job_posts(
     session: DbSessionDep,
+    pagination: Annotated[PageParams, Depends()],
     keyword: Annotated[str | None, Query(max_length=100)] = None,
     source_platforms: Annotated[list[str] | None, Query()] = None,
     statuses: Annotated[list[JobPostStatus] | None, Query()] = None,
@@ -48,8 +50,6 @@ async def search_job_posts(
     seen_from: datetime | None = None,
     seen_to: datetime | None = None,
     sort: JobPostSort = "published_at_desc",
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     include_closed: bool = False,
 ) -> JobPostListResponse:
     """查询岗位列表，支持关键词、枚举、薪资、地点文本和时间范围筛选。"""
@@ -74,8 +74,8 @@ async def search_job_posts(
         seen_from=seen_from,
         seen_to=seen_to,
         sort=sort,
-        page=page,
-        page_size=page_size,
+        page=pagination.page,
+        page_size=pagination.page_size,
         include_closed=include_closed,
     )
     return await service.search_job_posts(session, params)

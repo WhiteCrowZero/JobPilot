@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from job_pilot.core.pagination import PageParams, PageResult
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -23,7 +24,7 @@ JobPostSort = Literal[
 ]
 
 
-class JobPostSearchParams(BaseModel):
+class JobPostSearchParams(PageParams):
     """岗位复杂筛选参数。"""
 
     keyword: str | None = Field(default=None, max_length=100)
@@ -45,13 +46,7 @@ class JobPostSearchParams(BaseModel):
     seen_from: datetime | None = None
     seen_to: datetime | None = None
     sort: JobPostSort = "published_at_desc"
-    page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=20, ge=1, le=100)
     include_closed: bool = False
-
-    @property
-    def offset(self) -> int:
-        return (self.page - 1) * self.page_size
 
     @model_validator(mode="after")
     def validate_ranges(self) -> JobPostSearchParams:
@@ -88,12 +83,8 @@ class JobPostListItem(BaseModel):
     status: JobPostStatus
 
 
-class JobPostListResponse(BaseModel):
+class JobPostListResponse(PageResult[JobPostListItem]):
     """岗位分页列表响应。"""
-
-    items: list[JobPostListItem]
-    page: int
-    page_size: int
 
 
 class JobPostDetailResponse(JobPostListItem):

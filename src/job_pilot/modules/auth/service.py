@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +36,8 @@ from job_pilot.modules.users import repository as user_repository
 from job_pilot.modules.users.enums import UserStatus
 from job_pilot.modules.users.models import User
 from job_pilot.modules.users.schemas import UserRead
+
+logger = logging.getLogger(__name__)
 
 
 async def register_with_email_password(
@@ -91,6 +95,10 @@ async def register_with_password_identity(
                 session=session,
             )
             if existing_identity is not None:
+                logger.warning(
+                    "Registration rejected because identity already exists",
+                    extra={"auth_provider": provider.value},
+                )
                 raise AuthIdentityAlreadyExistsError.from_provider(provider)
 
             user = await user_repository.create_user(
@@ -107,6 +115,10 @@ async def register_with_password_identity(
                 session=session,
             )
     except IntegrityError as exc:
+        logger.warning(
+            "Registration rejected by database unique constraint",
+            extra={"auth_provider": provider.value},
+        )
         raise AuthIdentityAlreadyExistsError.from_provider(provider) from exc
 
     if user is None:
@@ -162,8 +174,16 @@ async def login_with_password_identity(
             session=session,
         )
         if identity is None:
+            logger.warning(
+                "Password login failed",
+                extra={"auth_provider": provider.value},
+            )
             raise InvalidCredentialsError()
         if not identity.user.is_active:
+            logger.warning(
+                "Inactive user login rejected",
+                extra={"auth_provider": provider.value, "user_id": identity.user.id},
+            )
             raise UserInactiveError()
 
         user = await user_repository.update_last_login_at(identity.user, session)
@@ -182,8 +202,10 @@ async def refresh_login(
     token_data = await consume_refresh_token(refresh_token, cache)
     user = await user_repository.get_user_by_id(token_data.user_id, session)
     if user is None:
+        logger.warning("Refresh token rejected because user was not found")
         raise InvalidCredentialsError("Invalid refresh token")
     if not user.is_active:
+        logger.warning("Refresh token rejected for inactive user", extra={"user_id": user.id})
         raise UserInactiveError()
 
     return await build_token_response(user, cache)
