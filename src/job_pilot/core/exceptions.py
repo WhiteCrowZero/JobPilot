@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette import status
+
+logger = logging.getLogger(__name__)
 
 
 class AppError(Exception):
@@ -45,12 +48,33 @@ class ValidationError(AppError):
         super().__init__(
             message=message,
             code=code,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
 
-async def app_error_handler(_: Request, exc: Exception) -> JSONResponse:
+class ResourceUnavailableError(AppError):
+    def __init__(
+        self,
+        message: str = "Resource unavailable",
+        code: str = "RESOURCE_UNAVAILABLE",
+    ):
+        super().__init__(
+            message=message, code=code, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     app_error = cast(AppError, exc)
+    if app_error.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+        logger.error(
+            "Application error returned server error response",
+            extra={
+                "error_code": app_error.code,
+                "status_code": app_error.status_code,
+                "path": request.url.path,
+                "method": request.method,
+            },
+        )
     return JSONResponse(
         status_code=app_error.status_code,
         content={"detail": app_error.message, "code": app_error.code},

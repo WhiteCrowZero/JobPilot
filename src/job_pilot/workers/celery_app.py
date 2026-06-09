@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from celery import Celery
 
 from job_pilot.core.config import settings
+from job_pilot.core.logging import configure_logging
+
+configure_logging(settings, service_name="worker")
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "jobpilot",
@@ -24,4 +30,5 @@ celery_app.conf.update(
 
 @celery_app.task(name="debug.ping")
 def ping() -> str:
+    logger.info("Celery ping task executed")
     return "pong"

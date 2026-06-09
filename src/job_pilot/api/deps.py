@@ -25,7 +25,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
     resources = get_resources(request)
-    async with resources.database.session_factory() as session:
+    async with resources.require_database().session_factory() as session:
         yield session
 
 
@@ -81,14 +81,14 @@ CurrentSuperuserDep = Annotated[User, Depends(get_current_superuser)]
 
 
 def get_cache_store(request: Request) -> CacheStore:
-    return get_resources(request).cache
+    return get_resources(request).require_cache()
 
 
 CurrentCacheStoreDep = Annotated[CacheStore, Depends(get_cache_store)]
 
 
 def get_distributed_lock(request: Request) -> DistributedLock:
-    return get_resources(request).lock
+    return get_resources(request).require_lock()
 
 
 CurrentDistributedLockDep = Annotated[DistributedLock, Depends(get_distributed_lock)]

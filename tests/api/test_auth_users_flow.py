@@ -4,7 +4,11 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.modules.users.enums import UserStatus
+from job_pilot.modules.users.models import User
 from tests.api.endpoints import (
     AUTH_LOGIN_EMAIL_ENDPOINT,
     AUTH_LOGIN_PHONE_ENDPOINT,
@@ -26,6 +30,15 @@ def use_fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("job_pilot.modules.auth.service.hash_password", fake_hash_password)
     monkeypatch.setattr("job_pilot.modules.auth.service.verify_password", fake_verify_password)
+
+
+async def disable_user(user_id: int, db_session: AsyncSession) -> None:
+    """将用户状态改为禁用，用于构造认证失败场景。"""
+
+    await db_session.execute(
+        update(User).where(User.id == user_id).values(status=UserStatus.DISABLED)
+    )
+    await db_session.commit()
 
 
 @pytest.mark.asyncio
@@ -167,6 +180,179 @@ async def test_login_rejects_invalid_password(api_client: httpx.AsyncClient) -> 
     # Assert
     assert response.status_code == 401
     assert response.json()["code"] == "INVALID_CREDENTIALS"
+
+
+@pytest.mark.asyncio
+async def test_email_register_rejects_weak_password(api_client: httpx.AsyncClient) -> None:
+    # Arrange
+    payload = {
+        "email": f"weak-password-{uuid4().hex}@example.com",
+        "password": "password",
+        "display_name": "Weak Password User",
+    }
+
+    # Act
+    response = await api_client.post(AUTH_REGISTER_EMAIL_ENDPOINT, json=payload)
+
+    # Assert
+    assert response.status_code == 422
+    assert response.json()["code"] == "WEAK_PASSWORD"
+
+
+@pytest.mark.asyncio
+async def test_read_current_user_without_token_returns_401(
+    api_client: httpx.AsyncClient,
+) -> None:
+    # Arrange & Act
+    response = await api_client.get(USERS_ME_ENDPOINT)
+
+    # Assert
+    assert response.status_code == 401
+    assert response.json()["code"] == "INVALID_CREDENTIALS"
+
+
+@pytest.mark.asyncio
+async def test_read_current_user_with_refresh_token_returns_invalid_token_type(
+    api_client: httpx.AsyncClient,
+) -> None:
+    # Arrange
+    register_response = await api_client.post(
+        AUTH_REGISTER_EMAIL_ENDPOINT,
+        json={
+            "email": f"refresh-on-me-{uuid4().hex}@example.com",
+            "password": "Password123",
+            "display_name": "Refresh Token User",
+        },
+    )
+    refresh_token = register_response.json()["refresh_token"]
+
+    # Act
+    response = await api_client.get(
+        USERS_ME_ENDPOINT,
+        headers={"Authorization": f"Bearer {refresh_token}"},
+    )
+
+    # Assert
+    assert response.status_code == 401
+    assert response.json()["code"] == "INVALID_TOKEN_TYPE"
+
+
+@pytest.mark.asyncio
+async def test_disabled_user_cannot_login(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    # Arrange
+    email = f"disabled-login-{uuid4().hex}@example.com"
+    password = "Password123"
+    register_response = await api_client.post(
+        AUTH_REGISTER_EMAIL_ENDPOINT,
+        json={
+            "email": email,
+            "password": password,
+            "display_name": "Disabled Login User",
+        },
+    )
+    await disable_user(register_response.json()["user"]["id"], db_session)
+
+    # Act
+    response = await api_client.post(
+        AUTH_LOGIN_EMAIL_ENDPOINT,
+        json={"email": email, "password": password},
+    )
+
+    # Assert
+    assert response.status_code == 403
+    assert response.json()["code"] == "ACCOUNT_DISABLED"
+
+
+@pytest.mark.asyncio
+async def test_disabled_user_cannot_refresh(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    # Arrange
+    register_response = await api_client.post(
+        AUTH_REGISTER_EMAIL_ENDPOINT,
+        json={
+            "email": f"disabled-refresh-{uuid4().hex}@example.com",
+            "password": "Password123",
+            "display_name": "Disabled Refresh User",
+        },
+    )
+    register_payload = register_response.json()
+    await disable_user(register_payload["user"]["id"], db_session)
+
+    # Act
+    response = await api_client.post(
+        AUTH_REFRESH_ENDPOINT,
+        json={"refresh_token": register_payload["refresh_token"]},
+    )
+
+    # Assert
+    assert response.status_code == 403
+    assert response.json()["code"] == "ACCOUNT_DISABLED"
+
+
+@pytest.mark.asyncio
+async def test_disabled_user_cannot_access_active_user_endpoint(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    # Arrange
+    register_response = await api_client.post(
+        AUTH_REGISTER_EMAIL_ENDPOINT,
+        json={
+            "email": f"disabled-me-{uuid4().hex}@example.com",
+            "password": "Password123",
+            "display_name": "Disabled Me User",
+        },
+    )
+    register_payload = register_response.json()
+    await disable_user(register_payload["user"]["id"], db_session)
+
+    # Act
+    response = await api_client.get(
+        USERS_ME_ENDPOINT,
+        headers={"Authorization": f"Bearer {register_payload['access_token']}"},
+    )
+
+    # Assert
+    assert response.status_code == 403
+    assert response.json()["code"] == "ACCOUNT_DISABLED"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "payload"),
+    [
+        (
+            AUTH_REGISTER_PHONE_ENDPOINT,
+            {
+                "phone": "13812345678",
+                "password": "Password123",
+                "display_name": "Invalid Phone User",
+            },
+        ),
+        (
+            AUTH_LOGIN_PHONE_ENDPOINT,
+            {
+                "phone": "13812345678",
+                "password": "Password123",
+            },
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_phone_auth_rejects_invalid_phone_format(
+    api_client: httpx.AsyncClient,
+    endpoint: str,
+    payload: dict[str, str],
+) -> None:
+    # Act
+    response = await api_client.post(endpoint, json=payload)
+
+    # Assert
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

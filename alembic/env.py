@@ -7,16 +7,17 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-import job_pilot.db.models  # noqa: F401
 from alembic import context
 from job_pilot.core.config import settings
 from job_pilot.db.base import Base
+from job_pilot.db.session import load_sqlalchemy_models
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+load_sqlalchemy_models()
 config.set_main_option("sqlalchemy.url", settings.effective_database_url)
 target_metadata = Base.metadata
 

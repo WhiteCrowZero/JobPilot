@@ -5,9 +5,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     DateTime,
-    Enum,
     ForeignKey,
-    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -15,6 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from job_pilot.core.enums import enum_column
 from job_pilot.db.base import Base, TimestampMixin
 from job_pilot.modules.auth.enums import AuthProvider
 
@@ -44,20 +43,10 @@ class AuthIdentity(TimestampMixin, Base):
             "provider_subject",
             name="uq_auth_identities_provider_subject",
         ),
-        Index(
-            "ix_auth_identities_user_provider",
+        UniqueConstraint(
             "user_id",
             "provider",
-        ),
-        Index(
-            "ix_auth_identities_provider_email",
-            "provider",
-            "provider_email",
-        ),
-        Index(
-            "ix_auth_identities_provider_phone",
-            "provider",
-            "provider_phone",
+            name="uq_auth_identities_user_provider",
         ),
         {
             "comment": "用户登录身份表，保存邮箱、手机号、第三方账号等可登录身份。",
@@ -74,19 +63,11 @@ class AuthIdentity(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="所属用户 ID，关联 users.id。",
     )
 
     provider: Mapped[AuthProvider] = mapped_column(
-        Enum(
-            AuthProvider,
-            name="auth_provider",
-            native_enum=False,
-            length=30,
-            create_constraint=True,
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-        ),
+        enum_column(AuthProvider, "auth_provider", 30),
         nullable=False,
         comment="登录身份提供方，例如 email、phone、github、google。",
     )
@@ -106,14 +87,12 @@ class AuthIdentity(TimestampMixin, Base):
     provider_email: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
-        index=True,
         comment="提供方返回或用户绑定的邮箱地址。",
     )
 
     provider_phone: Mapped[str | None] = mapped_column(
         String(32),
         nullable=True,
-        index=True,
         comment="提供方返回或用户绑定的手机号。",
     )
 
