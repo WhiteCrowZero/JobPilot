@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     TEST_DATABASE_URL: str = "postgresql+asyncpg://jobpilot:jobpilot@127.0.0.1:5433/jobpilot_test"
     DATABASE_ECHO: bool = False
 
-    REDIS_URL: str = "redis://:jobpilot_redis@127.0.0.1:6479/0"
-    CELERY_BROKER_URL: str = "redis://:jobpilot_redis@127.0.0.1:6479/1"
-    CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@127.0.0.1:6479/2"
+    REDIS_URL: str = "redis://:jobpilot_redis@127.0.0.1:6379/0"
+    CELERY_BROKER_URL: str = "redis://:jobpilot_redis@127.0.0.1:6379/1"
+    CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@127.0.0.1:6379/2"
 
     UPLOAD_DIR: Path = Path("./storage/uploads")
     MAX_UPLOAD_SIZE_MB: int = 20
