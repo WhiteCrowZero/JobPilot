@@ -26,11 +26,13 @@ from job_pilot.modules.job_posts.enums import (
     EmploymentType,
     ExperienceLevel,
     JobPostStatus,
+    SalaryPeriod,
     WorkplaceType,
 )
 
 if TYPE_CHECKING:
     from job_pilot.modules.ingestion.models import RawJobRecord
+    from job_pilot.modules.job_skills.models import JobPostSkill
 
 
 class JobSource(TimestampMixin, Base):
@@ -111,18 +113,6 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
             "ix_job_posts_open_created_at_id",
             text("created_at DESC"),
             text("id DESC"),
-            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
-        ),
-        Index(
-            "ix_job_posts_open_salary_max_id",
-            text("salary_max DESC NULLS LAST"),
-            text("id DESC"),
-            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
-        ),
-        Index(
-            "ix_job_posts_open_salary_min_id",
-            text("salary_min ASC NULLS LAST"),
-            text("id ASC"),
             postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
         ),
         {
@@ -238,13 +228,13 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
     salary_min: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
-        comment="解析后的最低薪资数值。周期语义保留在 salary_text，不单独结构化。",
+        comment="解析后的最低薪资数值。周期只作为展示字段，不作为当前筛选字段。",
     )
 
     salary_max: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
-        comment="解析后的最高薪资数值。周期语义保留在 salary_text，不单独结构化。",
+        comment="解析后的最高薪资数值。周期只作为展示字段，不作为当前筛选字段。",
     )
 
     salary_currency: Mapped[str] = mapped_column(
@@ -253,6 +243,14 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
         default="CNY",
         server_default="CNY",
         comment="薪资币种，默认 CNY。",
+    )
+
+    salary_period: Mapped[SalaryPeriod] = mapped_column(
+        enum_column(SalaryPeriod, name="salary_period", length=20),
+        nullable=False,
+        default=SalaryPeriod.UNKNOWN,
+        server_default=SalaryPeriod.UNKNOWN.value,
+        comment="薪资周期，例如 hour、day、month、year；无法判断为 unknown。",
     )
 
     published_at: Mapped[datetime | None] = mapped_column(
@@ -281,6 +279,12 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
         comment="规范化岗位状态。",
     )
 
+    skill_content_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        comment="当前已同步到 job_post_skills 的结构化技能内容 hash。",
+    )
+
     source: Mapped[JobSource] = relationship(
         back_populates="job_posts",
     )
@@ -293,6 +297,12 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
         back_populates="job_post",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+
+    skill_links: Mapped[list[JobPostSkill]] = relationship(
+        "JobPostSkill",
+        back_populates="job_post",
+        cascade="all, delete-orphan",
     )
 
 

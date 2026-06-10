@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+from job_pilot.modules.job_posts.enums import SalaryPeriod
+
 from .text import clean_text
 from .types import NormalizedSalary
 
@@ -53,24 +55,25 @@ _NEGOTIABLE_SEGMENT_PATTERNS = [
 def normalize_salary(raw_salary: object | None) -> NormalizedSalary:
     """解析常见薪资文本。
 
-    只结构化 text/min/max/currency；周期不单独落库，避免不稳定清洗制造无效字段。
+    只结构化明确的 text/min/max/currency/period。
     只处理 adapter 显式映射出的薪资字段，不从岗位标题或描述中兜底提取。
     支持：10-15K、20-30k·14薪、150-200/天、1.5-2万/月、100-150K/year、USD 80k-120k。
     """
 
     salary_text = _pick_salary_text(raw_salary)
     if salary_text is None:
-        return NormalizedSalary(None, None, None, "CNY")
+        return NormalizedSalary(None, None, None, "CNY", SalaryPeriod.UNKNOWN)
 
     normalized_text = salary_text.casefold().replace(" ", "")
     currency = _normalize_currency(normalized_text)
+    period = _normalize_salary_period(normalized_text)
     if any(keyword in normalized_text for keyword in _NEGOTIABLE_KEYWORDS):
-        return NormalizedSalary(salary_text, None, None, currency)
+        return NormalizedSalary(salary_text, None, None, currency, period)
 
     numbers = [_parse_number(number) for number in _NUMBER_PATTERN.findall(normalized_text)]
     numbers = [number for number in numbers if number is not None]
     if not numbers:
-        return NormalizedSalary(salary_text, None, None, currency)
+        return NormalizedSalary(salary_text, None, None, currency, period)
 
     multiplier = _salary_multiplier(normalized_text)
     salary_min = int(numbers[0] * multiplier)
@@ -83,6 +86,7 @@ def normalize_salary(raw_salary: object | None) -> NormalizedSalary:
         salary_min=salary_min,
         salary_max=salary_max,
         salary_currency=currency,
+        salary_period=period,
     )
 
 
@@ -165,3 +169,23 @@ def _normalize_currency(normalized_text: str) -> str:
     if "usd" in normalized_text or "$" in normalized_text:
         return "USD"
     return "CNY"
+
+
+def _normalize_salary_period(normalized_text: str) -> SalaryPeriod:
+    if re.search(r"/(?:hour|hr|h)\b", normalized_text):
+        return SalaryPeriod.HOUR
+    if (
+        "/天" in normalized_text
+        or "/日" in normalized_text
+        or re.search(r"/day\b", normalized_text)
+    ):
+        return SalaryPeriod.DAY
+    if "/月" in normalized_text or re.search(r"/month\b", normalized_text):
+        return SalaryPeriod.MONTH
+    if "/年" in normalized_text or re.search(r"/(?:year|yr)\b", normalized_text):
+        return SalaryPeriod.YEAR
+    if "月薪" in normalized_text:
+        return SalaryPeriod.MONTH
+    if "年薪" in normalized_text:
+        return SalaryPeriod.YEAR
+    return SalaryPeriod.UNKNOWN

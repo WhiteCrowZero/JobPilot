@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from sqlalchemy import Select, and_, exists, literal, or_, select
+from sqlalchemy import Select, and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
@@ -14,6 +14,7 @@ from job_pilot.modules.job_posts.models import (
     JobSource,
 )
 from job_pilot.modules.job_posts.schemas import JobPostSearchParams
+from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 
 
 class JobPostRepository:
@@ -31,8 +32,8 @@ class JobPostRepository:
     ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
 
-        page_id_stmt = self._apply_sort(base_stmt, params).offset(params.offset).limit(
-            params.limit + 1
+        page_id_stmt = (
+            self._apply_sort(base_stmt, params).offset(params.offset).limit(params.limit + 1)
         )
         id_result = await db.execute(page_id_stmt)
         job_post_ids = list(id_result.scalars().all())
@@ -102,7 +103,7 @@ class JobPostRepository:
             conditions.append(JobPost.experience_min_years.is_not(None))
             conditions.append(JobPost.experience_min_years <= params.experience_max_years)
 
-        # 薪资区间：MVP 只比较已经解析出的数值，周期语义保留在 salary_text。
+        # 薪资区间：MVP 只比较已经解析出的数值，周期字段只按明确清洗结果筛选。
         if params.salary_currency is not None:
             conditions.append(JobPost.salary_currency == params.salary_currency)
         if params.salary_min is not None:
@@ -149,6 +150,16 @@ class JobPostRepository:
             conditions.append(
                 or_(*(JobPost.locations.ilike(f"%{keyword}%") for keyword in location_keywords))
             )
+
+        skill_ids = _clean_optional_int_list(params.skill_ids)
+        if skill_ids:
+            matched_job_ids = (
+                select(JobPostSkill.job_post_id)
+                .where(JobPostSkill.skill_id.in_(skill_ids))
+                .group_by(JobPostSkill.job_post_id)
+                .having(func.count(func.distinct(JobPostSkill.skill_id)) == len(skill_ids))
+            )
+            conditions.append(JobPost.id.in_(matched_job_ids))
 
         return stmt.where(and_(*conditions))
 
@@ -208,6 +219,13 @@ class JobPostLookupRepository:
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_skills(self, db: AsyncSession) -> list[Skill]:
+        """返回全部标准技能，供岗位筛选项使用。"""
+
+        stmt = select(Skill).order_by(Skill.name.asc())
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     def _open_job_post_conditions(self) -> list[ColumnElement[bool]]:
         return [
             JobPost.deleted_at.is_(None),
@@ -227,3 +245,9 @@ def _clean_optional_list(values: list[str] | None) -> list[str]:
         return []
     cleaned_values = [value.strip() for value in values if value.strip()]
     return list(dict.fromkeys(cleaned_values))
+
+
+def _clean_optional_int_list(values: list[int] | None) -> list[int]:
+    if not values:
+        return []
+    return list(dict.fromkeys(value for value in values if value > 0))

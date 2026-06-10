@@ -4,16 +4,25 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.modules.ingestion.adapters import JobDraft
+from job_pilot.modules.ingestion.adapters import (
+    AlibabaJobAdapter,
+    JaabzJobAdapter,
+    JobDraft,
+    TencentJobAdapter,
+)
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.enums import RawJobRecordStatus
 from job_pilot.modules.ingestion.models import RawJobRecord
 from job_pilot.modules.ingestion.normalization import normalize_job_draft, normalize_salary
-from job_pilot.modules.ingestion.repository import RawRecordIngestionAction
+from job_pilot.modules.ingestion.repository import (
+    RawJobIngestionRepository,
+    RawRecordIngestionAction,
+)
 from job_pilot.modules.ingestion.service import JobSourceConfig, RawJobIngestionService
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     ExperienceLevel,
+    SalaryPeriod,
     WorkplaceType,
 )
 from job_pilot.modules.job_posts.models import (
@@ -21,6 +30,7 @@ from job_pilot.modules.job_posts.models import (
     JobPostDetail,
     JobSource,
 )
+from job_pilot.modules.job_skills.models import JobPostSkill
 
 
 def test_normalize_job_draft_splits_core_job_fields() -> None:
@@ -40,7 +50,7 @@ def test_normalize_job_draft_splits_core_job_fields() -> None:
         raw_employment_type="全职",
         raw_flexibility="混合办公",
         raw_salary="15-30K",
-        raw_skills=None,
+        raw_skills=[],
         published_at_raw="2026-06-01",
     )
 
@@ -50,6 +60,7 @@ def test_normalize_job_draft_splits_core_job_fields() -> None:
     assert normalized.salary_text == "15-30K"
     assert normalized.salary_min == 15000
     assert normalized.salary_max == 30000
+    assert normalized.salary_period == SalaryPeriod.UNKNOWN
     assert normalized.experience_level == ExperienceLevel.MID
     assert normalized.experience_min_years == 3
     assert normalized.experience_max_years == 5
@@ -76,14 +87,18 @@ def test_normalize_salary_supports_common_text() -> None:
     assert monthly_salary.salary_min == 20000
     assert monthly_salary.salary_max == 30000
     assert monthly_salary.salary_currency == "CNY"
+    assert monthly_salary.salary_period == SalaryPeriod.UNKNOWN
     assert yearly_salary.salary_min == 80000
     assert yearly_salary.salary_max == 120000
     assert yearly_salary.salary_currency == "USD"
+    assert yearly_salary.salary_period == SalaryPeriod.YEAR
     assert daily_salary.salary_min == 150
     assert daily_salary.salary_max == 200
+    assert daily_salary.salary_period == SalaryPeriod.DAY
     assert salary_with_context.salary_text == "1.5-2万/月"
     assert salary_with_context.salary_min == 15000
     assert salary_with_context.salary_max == 20000
+    assert salary_with_context.salary_period == SalaryPeriod.MONTH
     assert negotiable_salary.salary_text == "Salary: negotiable"
     assert negotiable_salary.salary_min is None
     assert negotiable_salary.salary_max is None
@@ -108,7 +123,7 @@ def test_normalize_job_draft_does_not_extract_salary_from_description() -> None:
         raw_employment_type="full-time",
         raw_flexibility="remote",
         raw_salary=None,
-        raw_skills=None,
+        raw_skills=[],
         published_at_raw="2026-06-01",
     )
 
@@ -117,6 +132,35 @@ def test_normalize_job_draft_does_not_extract_salary_from_description() -> None:
     assert normalized.salary_text is None
     assert normalized.salary_min is None
     assert normalized.salary_max is None
+    assert normalized.salary_period == SalaryPeriod.UNKNOWN
+
+
+def test_job_adapters_do_not_guess_skill_like_fields_without_explicit_mapping() -> None:
+    """adapter 只映射已确认的来源字段，不从通用字段名猜测技能。"""
+
+    raw_payload = {
+        "job_id": "source-001",
+        "id": "source-001",
+        "position_id": "source-001",
+        "job_url": "https://jobs.example.com/source-001",
+        "title": "Backend Engineer",
+        "job_name": "Backend Engineer",
+        "area": "北京",
+        "city_name": "北京",
+        "skills": ["Python", "FastAPI"],
+        "tags": ["Redis"],
+        "keywords": "Docker, Kubernetes",
+        "技术栈": "FastAPI / PostgreSQL",
+        "技能": "Python",
+    }
+
+    drafts = [
+        AlibabaJobAdapter().to_draft(raw_payload),
+        TencentJobAdapter().to_draft(raw_payload),
+        JaabzJobAdapter().to_draft(raw_payload),
+    ]
+
+    assert [draft.raw_skills for draft in drafts] == [[], [], []]
 
 
 @pytest.mark.asyncio
@@ -129,7 +173,8 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
                 platform="alibaba",
                 name="阿里巴巴社招",
                 base_url="https://talent.taotian.com/off-campus",
-            )
+            ),
+            repository=RawJobIngestionRepository(),
         )
         message = RawJobCollectedMessage(
             message_id="alibaba:sample-001",
@@ -147,6 +192,7 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
                 "experience": "3-5年",
                 "degree": "本科",
                 "salary": "20-30K",
+                "skills": ["Python", "Fast API", "UnknownSkill"],
                 "publish_time": "2026-06-01",
             },
         )
@@ -158,26 +204,35 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
         await db_session.commit()
 
         assert first_result.created_job_post is True
+        assert [candidate.text for candidate in first_result.raw_skill_candidates] == []
 
         job_post = (await db_session.execute(select(JobPost))).scalar_one()
         detail = (await db_session.execute(select(JobPostDetail))).scalar_one()
         raw_record = (await db_session.execute(select(RawJobRecord))).scalar_one()
         source = (await db_session.execute(select(JobSource))).scalar_one()
+        job_skills = (
+            (await db_session.execute(select(JobPostSkill).order_by(JobPostSkill.skill_id)))
+            .scalars()
+            .all()
+        )
 
         assert source.platform == "alibaba"
         assert source.name == "阿里巴巴社招"
         assert source.base_url == "https://talent.taotian.com/off-campus"
         assert raw_record.status == RawJobRecordStatus.NORMALIZED
         assert raw_record.external_job_id == "ali-001"
+        assert raw_record.skill_content_hash is None
         assert job_post.title == "后端开发工程师"
         assert job_post.locations == "北京 / 上海 / 中国"
         assert job_post.is_remote is False
         assert job_post.salary_text == "20-30K"
         assert job_post.salary_min == 20000
         assert job_post.salary_max == 30000
+        assert job_post.salary_period == SalaryPeriod.UNKNOWN
         assert job_post.experience_level == ExperienceLevel.MID
         assert job_post.education_level == EducationLevel.BACHELOR
         assert detail.description == "负责 FastAPI 后端服务建设。\n\n本科，3-5年经验。"
+        assert len(job_skills) == 0
 
         updated_message = message.model_copy(
             update={
@@ -185,7 +240,7 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
                 "raw_payload": {
                     **message.raw_payload,
                     "salary": "30-40K",
-                }
+                },
             }
         )
         second_result = await service.consume_raw_job_message(
@@ -349,8 +404,7 @@ async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_ver
         assert job_post.salary_min == 30000
         assert job_post.salary_max == 40000
         assert (
-            detail.description
-            == "负责 FastAPI 后端服务建设，包含签证支持。\n\n本科，3-5年经验。"
+            detail.description == "负责 FastAPI 后端服务建设，包含签证支持。\n\n本科，3-5年经验。"
         )
         assert detail.has_visa_sponsorship is True
     finally:
@@ -369,14 +423,16 @@ async def test_ingestion_source_uses_platform_and_base_url_identity(
                 platform="alibaba",
                 name="阿里巴巴社招",
                 base_url="https://talent.taotian.com/off-campus",
-            )
+            ),
+            repository=RawJobIngestionRepository(),
         )
         campus_service = RawJobIngestionService(
             source_config=JobSourceConfig(
                 platform="alibaba",
                 name="阿里巴巴校招",
                 base_url="https://talent.taotian.com/campus",
-            )
+            ),
+            repository=RawJobIngestionRepository(),
         )
 
         await social_service.consume_raw_job_message(
@@ -430,7 +486,8 @@ def _build_alibaba_ingestion_service() -> RawJobIngestionService:
             platform="alibaba",
             name="阿里巴巴社招",
             base_url="https://talent.taotian.com/off-campus",
-        )
+        ),
+        repository=RawJobIngestionRepository(),
     )
 
 
@@ -440,10 +497,13 @@ async def truncate_job_tables(session: AsyncSession) -> None:
         text(
             """
             TRUNCATE TABLE
+                job_post_skills,
                 job_post_details,
                 job_posts,
                 raw_job_records,
-                job_sources
+                job_sources,
+                skill_aliases,
+                skills
             RESTART IDENTITY CASCADE
             """
         )

@@ -21,6 +21,7 @@ from job_pilot.modules.job_posts.enums import (
     EmploymentType,
     ExperienceLevel,
     JobPostStatus,
+    SalaryPeriod,
     WorkplaceType,
 )
 from job_pilot.modules.job_posts.models import (
@@ -139,6 +140,7 @@ class RawJobIngestionRepository:
             external_job_id=message.external_job_id,
             source_url=message.source_url,
             raw_content_hash=raw_content_hash,
+            skill_content_hash=None,
             raw_payload=message.raw_payload,
             status=RawJobRecordStatus.RECEIVED,
             error_message=None,
@@ -290,6 +292,7 @@ class RawJobIngestionRepository:
             salary_min=normalized.salary_min,
             salary_max=normalized.salary_max,
             salary_currency=normalized.salary_currency,
+            salary_period=normalized.salary_period,
             published_at=normalized.published_at,
             first_seen_at=now,
             last_seen_at=now,
@@ -370,6 +373,13 @@ class RawJobIngestionRepository:
                             excluded.salary_currency,
                         ),
                         else_=JobPost.salary_currency,
+                    ),
+                    "salary_period": case(
+                        (
+                            excluded.salary_period != SalaryPeriod.UNKNOWN,
+                            excluded.salary_period,
+                        ),
+                        else_=JobPost.salary_period,
                     ),
                     "published_at": case(
                         (excluded.published_at.is_not(None), excluded.published_at),
@@ -453,10 +463,12 @@ class RawJobIngestionRepository:
         *,
         db: AsyncSession,
         raw_record: RawJobRecord,
+        skill_content_hash: str | None,
     ) -> None:
         now = datetime.now(UTC)
         raw_record.status = RawJobRecordStatus.NORMALIZED
         raw_record.error_message = None
+        raw_record.skill_content_hash = skill_content_hash
         raw_record.processed_at = now
         raw_record.last_seen_at = now
         await db.flush()

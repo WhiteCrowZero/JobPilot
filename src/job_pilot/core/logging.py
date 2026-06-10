@@ -224,9 +224,7 @@ def configure_logging(
             formatter=file_formatter,
             settings=settings,
         )
-        info_handler.addFilter(
-            LevelRangeFilter(min_level=logging.INFO, max_level=logging.WARNING)
-        )
+        info_handler.addFilter(LevelRangeFilter(min_level=logging.INFO, max_level=logging.WARNING))
         target_logger.addHandler(info_handler)
 
         error_handler = _build_file_handler(

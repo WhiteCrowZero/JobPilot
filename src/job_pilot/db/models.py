@@ -9,6 +9,7 @@ from job_pilot.modules.job_posts.models import (
     JobPostDetail,
     JobSource,
 )
+from job_pilot.modules.job_skills.models import JobPostSkill, Skill, SkillAlias
 from job_pilot.modules.users.models import User, UserProfile
 
 __all__ = [
@@ -19,5 +20,8 @@ __all__ = [
     "JobPost",
     "JobPostDetail",
     "JobSource",
+    "JobPostSkill",
+    "Skill",
+    "SkillAlias",
     "RawJobRecord",
 ]

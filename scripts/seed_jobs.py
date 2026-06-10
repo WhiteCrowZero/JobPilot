@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from job_pilot.core.config import settings
 from job_pilot.core.resources import build_database_only_resources
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
-from job_pilot.modules.ingestion.repository import build_raw_payload_hash
+from job_pilot.modules.ingestion.repository import RawJobIngestionRepository, build_raw_payload_hash
 from job_pilot.modules.ingestion.service import (
     JobSourceConfig,
     RawJobIngestionService,
@@ -171,7 +171,8 @@ async def import_source(
             platform=source_platform,
             name=config.source_name,
             base_url=config.source_base_url,
-        )
+        ),
+        repository=RawJobIngestionRepository(),
     )
     success_count = 0
     failed_count = 0

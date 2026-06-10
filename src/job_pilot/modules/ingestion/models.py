@@ -108,6 +108,13 @@ class RawJobRecord(TimestampMixin, Base):
         comment="raw_payload 规范化序列化后的内容 hash，用于幂等和变化检测。",
     )
 
+    skill_content_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+        comment="raw_payload 中结构化技能候选内容的 hash，用于追踪技能字段变化。",
+    )
+
     raw_payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,

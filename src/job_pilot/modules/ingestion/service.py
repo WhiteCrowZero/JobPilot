@@ -9,10 +9,15 @@ from job_pilot.core.exceptions import AppError, BadRequestError
 from job_pilot.modules.ingestion.adapters import BaseJobAdapter, get_job_adapter
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.normalization import normalize_job_draft
+from job_pilot.modules.ingestion.normalization.skills import (
+    build_skill_content_hash,
+    extract_raw_skill_candidates,
+)
 from job_pilot.modules.ingestion.repository import (
     RawJobIngestionRepository,
     RawRecordIngestionAction,
 )
+from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +32,8 @@ class RawJobIngestionResult:
     job_post_id: int | None
     created_job_post: bool
     action: RawRecordIngestionAction
+    raw_skill_candidates: list[RawSkillCandidate]
+    skill_content_hash: str | None
 
 
 @dataclass(slots=True, frozen=True)
@@ -49,10 +56,10 @@ class RawJobIngestionService:
     def __init__(
         self,
         source_config: JobSourceConfig,
-        repository: RawJobIngestionRepository | None = None,
+        repository: RawJobIngestionRepository,
     ) -> None:
         self.source_config = self._normalize_source_config(source_config)
-        self.repository = repository or RawJobIngestionRepository()
+        self.repository = repository
 
     async def consume_raw_job_message(
         self,
@@ -89,16 +96,21 @@ class RawJobIngestionService:
                     "action": raw_record_result.action,
                 },
             )
+            await session.commit()
             return RawJobIngestionResult(
                 raw_record_id=raw_record.id,
                 job_post_id=job_post_id,
                 created_job_post=False,
                 action=raw_record_result.action,
+                raw_skill_candidates=[],
+                skill_content_hash=raw_record.skill_content_hash,
             )
 
         try:
             adapter = self._get_adapter(message.source_platform)
             draft = adapter.to_draft(message.raw_payload)
+            raw_skill_candidates = extract_raw_skill_candidates(draft.raw_skills)
+            skill_content_hash = build_skill_content_hash(raw_skill_candidates)
             normalized = normalize_job_draft(draft)
             job_post, created_job_post_flag = await self.repository.upsert_job_post(
                 db=session,
@@ -114,13 +126,16 @@ class RawJobIngestionService:
             await self.repository.mark_raw_record_normalized(
                 db=session,
                 raw_record=raw_record,
+                skill_content_hash=skill_content_hash,
             )
+            await session.commit()
         except AppError as exc:
             await self.repository.mark_raw_record_failed(
                 db=session,
                 raw_record=raw_record,
                 error_message=exc.message,
             )
+            await session.commit()
             logger.warning(
                 "Raw job message failed business validation",
                 extra={
@@ -138,6 +153,7 @@ class RawJobIngestionService:
                 raw_record=raw_record,
                 error_message=str(exc),
             )
+            await session.commit()
             logger.exception(
                 "Raw job message failed during normalization",
                 extra={
@@ -154,6 +170,8 @@ class RawJobIngestionService:
             job_post_id=job_post.id,
             created_job_post=created_job_post_flag,
             action=RawRecordIngestionAction.PROCESS,
+            raw_skill_candidates=raw_skill_candidates,
+            skill_content_hash=skill_content_hash,
         )
 
     def _normalize_source_config(self, source_config: JobSourceConfig) -> JobSourceConfig:
@@ -185,3 +203,12 @@ class RawJobIngestionService:
                 f"Unsupported job source platform: {source_platform}",
                 code="UNSUPPORTED_JOB_SOURCE_PLATFORM",
             ) from exc
+
+
+def build_raw_job_ingestion_service(source_config: JobSourceConfig) -> RawJobIngestionService:
+    """组装 raw job 摄入 service 的默认依赖。"""
+
+    return RawJobIngestionService(
+        source_config=source_config,
+        repository=RawJobIngestionRepository(),
+    )

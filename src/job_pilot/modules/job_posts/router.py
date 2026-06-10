@@ -21,10 +21,10 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostSearchParams,
     JobPostSort,
 )
-from job_pilot.modules.job_posts.service import JobPostService
+from job_pilot.modules.job_posts.service import build_job_post_service
 
 router = APIRouter()
-service = JobPostService()
+service = build_job_post_service()
 
 
 @router.get("", response_model=JobPostListResponse)
@@ -44,6 +44,7 @@ async def search_job_posts(
     salary_max: Annotated[int | None, Query(ge=0)] = None,
     salary_currency: Annotated[str | None, Query(max_length=10)] = None,
     locations: Annotated[list[str] | None, Query()] = None,
+    skill_ids: Annotated[list[int] | None, Query()] = None,
     is_remote: bool | None = None,
     published_from: datetime | None = None,
     published_to: datetime | None = None,
@@ -68,6 +69,7 @@ async def search_job_posts(
         salary_max=salary_max,
         salary_currency=salary_currency,
         locations=locations,
+        skill_ids=skill_ids,
         is_remote=is_remote,
         published_from=published_from,
         published_to=published_to,
