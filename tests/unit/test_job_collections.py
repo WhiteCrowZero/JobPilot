@@ -149,11 +149,10 @@ async def test_update_folder_can_switch_default_folder(
         initial_folders = await service.list_folders(db_session, user_id=user.id)
         old_default_folder = next(item for item in initial_folders if item.is_default)
 
-        new_default_folder = await service.update_folder(
+        new_default_folder = await service.set_default_folder(
             db_session,
             user_id=user.id,
             folder_id=backend_folder.id,
-            payload=JobCollectionFolderUpdate(is_default=True),
         )
         collected = await service.collect_job(
             db_session,

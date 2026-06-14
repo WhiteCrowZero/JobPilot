@@ -11,6 +11,7 @@ from tests.api.endpoints import (
     JOB_COLLECTION_FOLDERS_ENDPOINT,
     JOB_COLLECTIONS_ENDPOINT,
     job_collection_endpoint,
+    job_collection_folder_default_endpoint,
     job_collection_folder_endpoint,
 )
 from tests.helpers.workbench import seed_test_job_post, truncate_workbench_tables
@@ -189,10 +190,9 @@ async def test_job_collection_api_can_switch_default_folder(
         old_default_payload = next(
             item for item in folders_response.json() if item["is_default"] is True
         )
-        switch_response = await api_client.patch(
-            job_collection_folder_endpoint(folder_response.json()["id"]),
+        switch_response = await api_client.post(
+            job_collection_folder_default_endpoint(folder_response.json()["id"]),
             headers=headers,
-            json={"is_default": True},
         )
         collect_response = await api_client.post(
             JOB_COLLECTIONS_ENDPOINT,

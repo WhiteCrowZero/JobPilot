@@ -64,6 +64,21 @@ async def update_collection_folder(
     )
 
 
+@router.post("/folders/{folder_id}/default", response_model=JobCollectionFolderResponse)
+async def set_default_collection_folder(
+    folder_id: int,
+    session: DbSessionDep,
+    current_user: CurrentActiveUserDep,
+) -> JobCollectionFolderResponse:
+    """设置当前用户默认岗位收藏夹。"""
+
+    return await service.set_default_folder(
+        session,
+        user_id=current_user.id,
+        folder_id=folder_id,
+    )
+
+
 @router.delete("/folders/{folder_id}", response_model=JobCollectionFolderResponse)
 async def archive_collection_folder(
     folder_id: int,

@@ -32,3 +32,13 @@ class DefaultJobCollectionFolderCannotArchiveError(ConflictError):
             message=message,
             code="DEFAULT_JOB_COLLECTION_FOLDER_CANNOT_ARCHIVE",
         )
+
+
+class DefaultJobCollectionFolderConflictError(ConflictError):
+    """默认收藏夹切换发生并发冲突。"""
+
+    def __init__(self, message: str = "Default job collection folder update conflict"):
+        super().__init__(
+            message=message,
+            code="DEFAULT_JOB_COLLECTION_FOLDER_CONFLICT",
+        )

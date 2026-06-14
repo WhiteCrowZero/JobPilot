@@ -54,6 +54,12 @@ async def test_create_target_directly_and_restore_completed_target(
             target_id=created.id,
             payload=JobTargetUpdate(status=JobTargetStatus.COMPLETED),
         )
+        updated_completed = await service.update_target(
+            db_session,
+            user_id=user.id,
+            target_id=created.id,
+            payload=JobTargetUpdate(note="Keep completion time"),
+        )
         restored = await service.create_target(
             db_session,
             user_id=user.id,
@@ -67,11 +73,13 @@ async def test_create_target_directly_and_restore_completed_target(
         assert completed.status == JobTargetStatus.COMPLETED
         assert completed.completed_at is not None
         assert completed.is_primary is False
+        assert updated_completed.completed_at == completed.completed_at
+        assert updated_completed.note == "Keep completion time"
         assert restored.id == created.id
         assert restored.status == JobTargetStatus.ACTIVE
         assert restored.completed_at is None
         assert restored.archived_at is None
-        assert restored.note == "Prepare system design"
+        assert restored.note == "Keep completion time"
 
         with pytest.raises(JobPostForTargetNotFoundError):
             await service.create_target(
@@ -127,6 +135,22 @@ async def test_create_target_validates_source_collection_ownership_and_job(
         )
 
         assert created.source_collection_id == matching_collection_id
+
+        completed = await target_service.update_target(
+            db_session,
+            user_id=owner_id,
+            target_id=created.id,
+            payload=JobTargetUpdate(status=JobTargetStatus.COMPLETED),
+        )
+        restored_without_source = await target_service.create_target(
+            db_session,
+            user_id=owner_id,
+            payload=JobTargetCreate(job_post_id=backend_job_id),
+        )
+
+        assert completed.source_collection_id == matching_collection_id
+        assert restored_without_source.id == created.id
+        assert restored_without_source.source_collection_id is None
 
         with pytest.raises(JobTargetSourceCollectionInvalidError):
             await target_service.create_target(

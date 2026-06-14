@@ -38,6 +38,7 @@ class JobTargetService:
 
         create_values = payload.model_dump(exclude={"job_post_id"})
         update_values = payload.model_dump(exclude={"job_post_id"}, exclude_unset=True)
+        update_values["source_collection_id"] = payload.source_collection_id
 
         try:
             await self._ensure_job_exists(db, job_post_id=payload.job_post_id)
@@ -104,7 +105,10 @@ class JobTargetService:
                 raise JobTargetNotFoundError()
 
             values = self._build_update_values(payload)
-            self._apply_status_lifecycle(target=target, values=values)
+            if "status" in values:
+                self._apply_status_lifecycle(target=target, values=values)
+            else:
+                self._apply_primary_lifecycle(target=target, values=values)
             if self._will_be_current_primary(target=target, values=values):
                 await self.repository.clear_primary_targets(
                     db,
@@ -188,6 +192,11 @@ class JobTargetService:
             return
 
         if values.get("is_primary") is True:
+            values["is_primary"] = False
+
+    @staticmethod
+    def _apply_primary_lifecycle(target: JobTarget, values: dict[str, object]) -> None:
+        if values.get("is_primary") is True and target.status not in CURRENT_TARGET_STATUSES:
             values["is_primary"] = False
 
     @staticmethod

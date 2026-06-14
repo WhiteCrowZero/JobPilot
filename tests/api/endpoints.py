@@ -42,5 +42,9 @@ def job_collection_folder_endpoint(folder_id: int) -> str:
     return api_path(f"/jobs/collections/folders/{folder_id}")
 
 
+def job_collection_folder_default_endpoint(folder_id: int) -> str:
+    return api_path(f"/jobs/collections/folders/{folder_id}/default")
+
+
 def job_target_endpoint(target_id: int) -> str:
     return api_path(f"/jobs/targets/{target_id}")

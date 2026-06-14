@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.modules.job_collections.exceptions import (
     DefaultJobCollectionFolderCannotArchiveError,
+    DefaultJobCollectionFolderConflictError,
     JobCollectionFolderNotFoundError,
     JobCollectionNotFoundError,
     JobPostForCollectionNotFoundError,
@@ -95,14 +97,6 @@ class JobCollectionService:
             if folder is None:
                 raise JobCollectionFolderNotFoundError()
             values = self._build_update_values(payload)
-            if values.get("is_default") is True:
-                await self.folder_repository.clear_default_folders(
-                    db,
-                    user_id=user_id,
-                    exclude_folder_id=folder.id,
-                )
-            elif "is_default" in values:
-                values.pop("is_default")
             if values:
                 folder = await self.folder_repository.update_folder(
                     db,
@@ -110,6 +104,42 @@ class JobCollectionService:
                     values=values,
                 )
                 await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        return self._folder_to_response(folder)
+
+    async def set_default_folder(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        folder_id: int,
+    ) -> JobCollectionFolderResponse:
+        """把当前用户某个 active 收藏夹设置为默认收藏夹。"""
+
+        try:
+            folder = await self.folder_repository.get_user_folder(
+                db,
+                user_id=user_id,
+                folder_id=folder_id,
+            )
+            if folder is None:
+                raise JobCollectionFolderNotFoundError()
+            await self.folder_repository.clear_default_folders(
+                db,
+                user_id=user_id,
+                exclude_folder_id=folder.id,
+            )
+            folder = await self.folder_repository.update_folder(
+                db,
+                folder=folder,
+                values={"is_default": True},
+            )
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise DefaultJobCollectionFolderConflictError() from exc
         except Exception:
             await db.rollback()
             raise
