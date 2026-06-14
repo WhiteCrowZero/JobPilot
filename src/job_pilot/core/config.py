@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    SECRET_KEY: str = Field(default="change-me-secret")
+    SECRET_KEY: str = Field(default="change-me-secret-for-at-least-20-characters")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     JWT_ALGORITHM: str = "HS256"
@@ -53,7 +53,6 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://:jobpilot_redis@127.0.0.1:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://:jobpilot_redis@127.0.0.1:6379/2"
 
-    UPLOAD_DIR: Path = Path("./storage/uploads")
     MAX_UPLOAD_SIZE_MB: int = 20
 
     BACKEND_CORS_ORIGINS: list[str] = [

@@ -328,5 +328,16 @@ def _text_or_none(value: object | None) -> str | None:
     return text_value or None
 
 
+# =============================================================================
+# 后续岗位技能同步说明
+# =============================================================================
+# 当前 seed_jobs.py 只负责事务 1：导入 raw_job_records、job_posts、job_post_details。
+# 岗位技能同步会在后续独立 worker / 编排层实现，不放进这个导入脚本。
+#
+# 后续 worker 需要完成：
+# 1. 读取岗位摄入结果中的 raw_skill_candidates / skill_content_hash。
+# 2. 开启独立事务同步 job_post_skills。
+# 3. 写回 job_posts.skill_content_hash，避免重复同步相同技能内容。
+# 4. 技能同步失败时只记录错误并允许重试，不回滚已经成功的岗位主数据导入。
 if __name__ == "__main__":
     asyncio.run(main())

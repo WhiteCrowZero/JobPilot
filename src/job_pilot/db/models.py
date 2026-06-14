@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from job_pilot.modules.auth.models import AuthIdentity, AuthPasswordCredential
 from job_pilot.modules.ingestion.models import RawJobRecord
+from job_pilot.modules.job_collections.models import JobCollection, JobCollectionFolder
 from job_pilot.modules.job_posts.models import (
     JobPost,
     JobPostDetail,
     JobSource,
 )
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill, SkillAlias
+from job_pilot.modules.job_targets.models import JobTarget
+from job_pilot.modules.user_skills.models import UserSkill
 from job_pilot.modules.users.models import User, UserProfile
 
 __all__ = [
@@ -24,4 +27,8 @@ __all__ = [
     "Skill",
     "SkillAlias",
     "RawJobRecord",
+    "JobCollectionFolder",
+    "JobCollection",
+    "JobTarget",
+    "UserSkill",
 ]

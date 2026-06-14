@@ -32,7 +32,9 @@ from job_pilot.modules.job_posts.enums import (
 
 if TYPE_CHECKING:
     from job_pilot.modules.ingestion.models import RawJobRecord
+    from job_pilot.modules.job_collections.models import JobCollection
     from job_pilot.modules.job_skills.models import JobPostSkill
+    from job_pilot.modules.job_targets.models import JobTarget
 
 
 class JobSource(TimestampMixin, Base):
@@ -101,12 +103,6 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
             "ix_job_posts_open_published_at_id",
             text("published_at DESC NULLS LAST"),
             text("id DESC"),
-            postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
-        ),
-        Index(
-            "ix_job_posts_open_published_at_asc_id",
-            text("published_at ASC NULLS LAST"),
-            text("id ASC"),
             postgresql_where=text("status = 'open' AND deleted_at IS NULL"),
         ),
         Index(
@@ -303,6 +299,16 @@ class JobPost(TimestampMixin, SoftDeleteMixin, Base):
         "JobPostSkill",
         back_populates="job_post",
         cascade="all, delete-orphan",
+    )
+
+    collections: Mapped[list[JobCollection]] = relationship(
+        back_populates="job_post",
+        passive_deletes=True,
+    )
+
+    targets: Mapped[list[JobTarget]] = relationship(
+        back_populates="job_post",
+        passive_deletes=True,
     )
 
 

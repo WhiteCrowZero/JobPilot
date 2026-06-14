@@ -54,8 +54,11 @@ EXCLUDE_DIR_NAMES = {
 
 # 排除相对路径：相对于 PROJECT_ROOT，命中该路径及其子路径都会排除
 EXCLUDE_RELATIVE_PATHS = {
-    # "data/raw",
-    # "deploy/secrets",
+    "docs/ai_report",
+    "docs/八股文档",
+    "docs/杂项",
+    "front",
+    "openspec",
 }
 
 # 排除文件名

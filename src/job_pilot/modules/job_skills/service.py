@@ -108,6 +108,8 @@ class JobSkillSyncService:
         本方法只负责事务 2 的业务内容：job_post_skills 与 job_posts.skill_content_hash。
         外层 orchestration/worker 决定何时调用和如何提交事务。
         """
+
+        # 注意此处的业务设计就是空技能时，如果之前已有技能关系，旧标签不会清掉
         if not candidates:
             return SkillSyncResult(
                 job_post_id=job_post_id,

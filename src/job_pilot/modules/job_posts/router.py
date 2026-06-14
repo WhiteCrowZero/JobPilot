@@ -27,7 +27,7 @@ router = APIRouter()
 service = build_job_post_service()
 
 
-@router.get("", response_model=JobPostListResponse)
+@router.get("/search", response_model=JobPostListResponse)
 async def search_job_posts(
     session: DbSessionDep,
     pagination: Annotated[PageParams, Depends()],

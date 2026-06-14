@@ -14,12 +14,12 @@ JobPilot 是一个基于 FastAPI
 
 ## 2. 开发规范
 
-1. 遵循 MVP 优先的迭代方式，除非用户明确要求（严格以`[system refactor]`开头），否则不要进行整体重写，直接明确拒绝。
+1. 遵循 MVP 优先的迭代方式，除非用户明确要求，否则不要进行整体重写，直接明确拒绝。
 2. 以后每做一个模块，都要同时产出 3 个东西：
     ```text
     1. 代码
     2. 测试
-    3. 学习文档，涉及的八股问题（在`docs/ai_report`下）
+    3. 学习文档，涉及的八股问题（在`docs/ai_report`下，中文命名）
     ```
 3. 每个函数和类属性，都要写类型注释，一定是具体的类型，尽量不要是 `Any`。
 4. 每个.py文件的开头加上 `from __future__ import annotations`。
@@ -84,18 +84,14 @@ JobPilot/
 |-- .env.example
 |-- .env.test
 |-- .gitignore
-|-- .dockerignore
 |-- .github
 |-- alembic.ini
 |-- alembic/
-|   |-- env.py
-|   `-- versions/
 |-- deploy/
 |   |-- .env
 |   |-- Dockerfile
 |   `-- docker-compose.yml
 |-- docs/
-|   `-- 八股文档/
 |-- logs/
 |-- src/
 |   `-- job_pilot/

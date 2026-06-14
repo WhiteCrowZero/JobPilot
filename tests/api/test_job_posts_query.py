@@ -14,10 +14,31 @@ from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.job_skills.service import build_job_skill_sync_service
 from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
 from tests.api.endpoints import (
-    JOBS_ENDPOINT,
+    JOB_SKILLS_ENDPOINT,
     JOBS_FILTER_OPTIONS_ENDPOINT,
+    JOBS_SEARCH_ENDPOINT,
     job_detail_endpoint,
 )
+
+
+@pytest.mark.asyncio
+async def test_list_standard_skills_under_jobs_domain(
+    api_client: httpx.AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    await truncate_job_tables(db_session)
+    await seed_test_skills(db_session)
+    await db_session.commit()
+
+    try:
+        response = await api_client.get(JOB_SKILLS_ENDPOINT, params={"keyword": "py"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] == 1
+        assert payload["items"] == [{"id": 1, "name": "Python"}]
+    finally:
+        await truncate_job_tables(db_session)
 
 
 @pytest.mark.asyncio
@@ -29,7 +50,7 @@ async def test_search_job_posts_with_multiple_filters(
 
     try:
         response = await api_client.get(
-            JOBS_ENDPOINT,
+            JOBS_SEARCH_ENDPOINT,
             params=[
                 ("keyword", "FastAPI"),
                 ("locations", "北京"),
@@ -65,16 +86,16 @@ async def test_search_job_posts_supports_remote_and_status_filters(
     await db_session.commit()
 
     try:
-        default_response = await api_client.get(JOBS_ENDPOINT)
+        default_response = await api_client.get(JOBS_SEARCH_ENDPOINT)
         remote_response = await api_client.get(
-            JOBS_ENDPOINT,
+            JOBS_SEARCH_ENDPOINT,
             params=[
                 ("workplace_types", "remote"),
                 ("is_remote", "true"),
             ],
         )
         closed_response = await api_client.get(
-            JOBS_ENDPOINT,
+            JOBS_SEARCH_ENDPOINT,
             params=[
                 ("statuses", "closed"),
                 ("include_closed", "true"),
@@ -102,10 +123,10 @@ async def test_search_job_posts_supports_skill_filters(
     await seed_job_posts(db_session)
 
     try:
-        python_response = await api_client.get(JOBS_ENDPOINT, params=[("skill_ids", "1")])
-        redis_response = await api_client.get(JOBS_ENDPOINT, params=[("skill_ids", "3")])
+        python_response = await api_client.get(JOBS_SEARCH_ENDPOINT, params=[("skill_ids", "1")])
+        redis_response = await api_client.get(JOBS_SEARCH_ENDPOINT, params=[("skill_ids", "3")])
         impossible_response = await api_client.get(
-            JOBS_ENDPOINT,
+            JOBS_SEARCH_ENDPOINT,
             params=[
                 ("skill_ids", "1"),
                 ("skill_ids", "3"),
@@ -131,14 +152,14 @@ async def test_search_job_posts_uses_page_pagination(
 
     try:
         first_page_response = await api_client.get(
-            JOBS_ENDPOINT,
+            JOBS_SEARCH_ENDPOINT,
             params={
                 "page": "1",
                 "page_size": "1",
             },
         )
         second_page_response = await api_client.get(
-            JOBS_ENDPOINT,
+            JOBS_SEARCH_ENDPOINT,
             params={
                 "page": "2",
                 "page_size": "1",

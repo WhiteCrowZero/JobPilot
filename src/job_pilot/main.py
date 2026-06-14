@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Application startup started")
-    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     app.state.resources = build_app_resources(settings)
     logger.info("Application startup completed")
     try:

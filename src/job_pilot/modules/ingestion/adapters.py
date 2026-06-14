@@ -91,6 +91,7 @@ class AlibabaJobAdapter(BaseJobAdapter):
                 "薪资",
                 "薪酬",
             ),
+            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
             raw_skills=[],
             published_at_raw=raw_payload.get("publish_time") or raw_payload.get("published_at"),
         )
@@ -130,6 +131,7 @@ class TencentJobAdapter(BaseJobAdapter):
                 "薪资",
                 "薪酬",
             ),
+            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
             raw_skills=[],
             published_at_raw=raw_payload.get("publish_time") or raw_payload.get("published_at"),
         )
@@ -169,6 +171,7 @@ class JaabzJobAdapter(BaseJobAdapter):
                 "薪资",
                 "薪酬",
             ),
+            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
             raw_skills=[],
             published_at_raw=raw_payload.get("release_time") or raw_payload.get("publish_time"),
         )
@@ -195,7 +198,11 @@ def _first_text(raw_payload: dict[str, Any], *keys: str) -> str | None:
 
 
 def _skill_texts_from_value(value: object | None) -> list[str]:
-    """解析 adapter 已明确映射的技能字段值，供后续真实来源字段接入复用。"""
+    """解析 adapter 已明确映射的技能字段值，供后续真实来源字段接入复用。
+
+    注意：这里不负责决定“从哪些字段取技能”。字段来源必须由具体 adapter
+    根据爬虫结构显式指定，避免把 tags、keywords 等含义不稳定的字段误当技能。
+    """
 
     if value is None:
         return []

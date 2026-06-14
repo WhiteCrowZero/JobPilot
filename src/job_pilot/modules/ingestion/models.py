@@ -111,7 +111,6 @@ class RawJobRecord(TimestampMixin, Base):
     skill_content_hash: Mapped[str | None] = mapped_column(
         String(64),
         nullable=True,
-        index=True,
         comment="raw_payload 中结构化技能候选内容的 hash，用于追踪技能字段变化。",
     )
 
