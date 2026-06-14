@@ -11,7 +11,8 @@ from job_pilot.modules.job_targets.exceptions import (
     JobTargetSourceCollectionInvalidError,
 )
 from job_pilot.modules.job_targets.models import JobTarget
-from job_pilot.modules.job_targets.repository import CURRENT_TARGET_STATUSES, JobTargetRepository
+from job_pilot.modules.job_targets.policies import is_current_target_status
+from job_pilot.modules.job_targets.repository import JobTargetRepository
 from job_pilot.modules.job_targets.schemas import (
     JobTargetCreate,
     JobTargetListParams,
@@ -175,7 +176,7 @@ class JobTargetService:
     @staticmethod
     def _apply_status_lifecycle(target: JobTarget, values: dict[str, object]) -> None:
         next_status = values.get("status", target.status)
-        if next_status in CURRENT_TARGET_STATUSES:
+        if isinstance(next_status, JobTargetStatus) and is_current_target_status(next_status):
             values["completed_at"] = None
             values["archived_at"] = None
             return
@@ -196,14 +197,18 @@ class JobTargetService:
 
     @staticmethod
     def _apply_primary_lifecycle(target: JobTarget, values: dict[str, object]) -> None:
-        if values.get("is_primary") is True and target.status not in CURRENT_TARGET_STATUSES:
+        if values.get("is_primary") is True and not is_current_target_status(target.status):
             values["is_primary"] = False
 
     @staticmethod
     def _will_be_current_primary(target: JobTarget, values: dict[str, object]) -> bool:
         next_status = values.get("status", target.status)
         next_is_primary = values.get("is_primary", target.is_primary)
-        return next_is_primary is True and next_status in CURRENT_TARGET_STATUSES
+        return (
+            next_is_primary is True
+            and isinstance(next_status, JobTargetStatus)
+            and is_current_target_status(next_status)
+        )
 
     @staticmethod
     def _to_response(target: JobTarget) -> JobTargetResponse:

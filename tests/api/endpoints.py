@@ -48,3 +48,15 @@ def job_collection_folder_default_endpoint(folder_id: int) -> str:
 
 def job_target_endpoint(target_id: int) -> str:
     return api_path(f"/jobs/targets/{target_id}")
+
+
+def job_match_job_coverage_endpoint(job_post_id: int) -> str:
+    return api_path(f"/jobs/match/jobs/{job_post_id}/coverage")
+
+
+def job_match_target_coverage_endpoint(target_id: int) -> str:
+    return api_path(f"/jobs/match/targets/{target_id}/coverage")
+
+
+def job_match_target_skills_endpoint() -> str:
+    return api_path("/jobs/match/targets/skills")

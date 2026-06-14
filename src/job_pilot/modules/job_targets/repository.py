@@ -10,9 +10,8 @@ from job_pilot.modules.job_collections.models import JobCollection
 from job_pilot.modules.job_posts.models import JobPost
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.models import JobTarget
+from job_pilot.modules.job_targets.policies import CURRENT_TARGET_STATUSES
 from job_pilot.modules.job_targets.schemas import JobTargetListParams
-
-CURRENT_TARGET_STATUSES = (JobTargetStatus.ACTIVE, JobTargetStatus.PAUSED)
 
 
 class JobTargetRepository:

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.modules.job_collections.models import JobCollection, JobCollectionFolder
 from job_pilot.modules.job_posts.models import JobPost, JobSource
-from job_pilot.modules.job_skills.models import Skill
+from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.job_targets.models import JobTarget
 from job_pilot.modules.users import repository as user_repository
@@ -89,6 +89,36 @@ async def seed_test_job_post(
     session.add(job_post)
     await session.commit()
     return job_post
+
+
+async def seed_test_job_post_skill(
+    session: AsyncSession,
+    *,
+    job_post_id: int,
+    skill_id: int,
+) -> JobPostSkill:
+    """创建测试岗位技能关系。"""
+
+    job_post_skill = JobPostSkill(job_post_id=job_post_id, skill_id=skill_id)
+    session.add(job_post_skill)
+    await session.commit()
+    return job_post_skill
+
+
+async def seed_test_job_post_skills(
+    session: AsyncSession,
+    *,
+    job_post_id: int,
+    skill_ids: Iterable[int],
+) -> list[JobPostSkill]:
+    """批量创建测试岗位技能关系。"""
+
+    links: list[JobPostSkill] = []
+    for skill_id in skill_ids:
+        links.append(JobPostSkill(job_post_id=job_post_id, skill_id=skill_id))
+    session.add_all(links)
+    await session.commit()
+    return links
 
 
 async def seed_test_collection_folder(
