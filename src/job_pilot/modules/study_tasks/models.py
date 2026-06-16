@@ -55,7 +55,10 @@ class StudyTask(UserOwnedMixin, TimestampMixin, Base):
             name="ck_study_tasks_actual_minutes_non_negative",
         ),
         CheckConstraint(
-            "(status = 'todo' AND started_at IS NULL AND completed_at IS NULL AND archived_at IS NULL) "
+            "(status = 'todo' "
+            "AND started_at IS NULL "
+            "AND completed_at IS NULL "
+            "AND archived_at IS NULL) "
             "OR (status = 'in_progress' AND completed_at IS NULL AND archived_at IS NULL) "
             "OR (status = 'completed' AND completed_at IS NOT NULL AND archived_at IS NULL) "
             "OR (status = 'archived' AND archived_at IS NOT NULL)",
@@ -264,7 +267,10 @@ class StudyTaskProgress(TimestampMixin, Base):
             "practiced_count >= 0", name="ck_study_task_progress_practiced_non_negative"
         ),
         CheckConstraint(
-            "correct_count >= 0 AND partial_count >= 0 AND incorrect_count >= 0 AND skipped_count >= 0",
+            "correct_count >= 0 "
+            "AND partial_count >= 0 "
+            "AND incorrect_count >= 0 "
+            "AND skipped_count >= 0",
             name="ck_study_task_progress_result_counts_non_negative",
         ),
         CheckConstraint(
