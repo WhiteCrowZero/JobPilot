@@ -58,7 +58,8 @@ uv pip
 推荐验证命令：
 
 ```bash
-uv run ruff check .
+uv run ruff format
+uv run ruff check . --fix
 uv run pytest
 uv run pyright
 ```
