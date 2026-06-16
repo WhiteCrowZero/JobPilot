@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from job_pilot.modules.auth.models import AuthIdentity
     from job_pilot.modules.job_collections.models import JobCollection, JobCollectionFolder
     from job_pilot.modules.job_targets.models import JobTarget
+    from job_pilot.modules.study_tasks.models import StudyTask
     from job_pilot.modules.user_skills.models import UserSkill
 
 
@@ -96,6 +97,11 @@ class User(TimestampMixin, SoftDeleteMixin, Base):
     )
 
     skill_profiles: Mapped[list[UserSkill]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    study_tasks: Mapped[list[StudyTask]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )

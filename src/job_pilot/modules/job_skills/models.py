@@ -16,6 +16,9 @@ from job_pilot.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from job_pilot.modules.job_posts.models import JobPost
+    from job_pilot.modules.knowledge.models import KnowledgePoint
+    from job_pilot.modules.questions.models import QuestionSkill
+    from job_pilot.modules.study_tasks.models import StudyTask
     from job_pilot.modules.user_skills.models import UserSkill
 
 
@@ -52,6 +55,18 @@ class Skill(TimestampMixin, Base):
     )
 
     user_skill_profiles: Mapped[list[UserSkill]] = relationship(
+        back_populates="skill",
+    )
+
+    knowledge_points: Mapped[list[KnowledgePoint]] = relationship(
+        back_populates="skill",
+    )
+
+    question_links: Mapped[list[QuestionSkill]] = relationship(
+        back_populates="skill",
+    )
+
+    study_tasks: Mapped[list[StudyTask]] = relationship(
         back_populates="skill",
     )
 

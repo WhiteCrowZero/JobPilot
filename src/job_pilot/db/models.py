@@ -12,6 +12,20 @@ from job_pilot.modules.job_posts.models import (
 )
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill, SkillAlias
 from job_pilot.modules.job_targets.models import JobTarget
+from job_pilot.modules.knowledge.models import KnowledgePoint
+from job_pilot.modules.questions.models import (
+    Question,
+    QuestionAnswer,
+    QuestionOption,
+    QuestionSkill,
+)
+from job_pilot.modules.study_tasks.models import (
+    StudyTask,
+    StudyTaskProgress,
+    StudyTaskQuestion,
+    StudyTaskQuestionAttempt,
+    StudyTaskSnapshot,
+)
 from job_pilot.modules.user_skills.models import UserSkill
 from job_pilot.modules.users.models import User, UserProfile
 
@@ -31,4 +45,14 @@ __all__ = [
     "JobCollection",
     "JobTarget",
     "UserSkill",
+    "KnowledgePoint",
+    "Question",
+    "QuestionSkill",
+    "QuestionAnswer",
+    "QuestionOption",
+    "StudyTask",
+    "StudyTaskQuestion",
+    "StudyTaskProgress",
+    "StudyTaskSnapshot",
+    "StudyTaskQuestionAttempt",
 ]
