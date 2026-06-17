@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from dataclasses import MISSING
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.pagination import trim_page_items
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionCreateCommand,
+    JobCollectionFolderCreateCommand,
+    JobCollectionFolderUpdateCommand,
+    JobCollectionListQuery,
+    JobCollectionUpdateCommand,
+)
 from job_pilot.modules.job_collections.exceptions import (
     DefaultJobCollectionFolderCannotArchiveError,
     DefaultJobCollectionFolderConflictError,
+    JobCollectionFolderNameConflictError,
     JobCollectionFolderNotFoundError,
     JobCollectionNotFoundError,
     JobPostForCollectionNotFoundError,
@@ -16,14 +27,9 @@ from job_pilot.modules.job_collections.repository import (
     JobCollectionRepository,
 )
 from job_pilot.modules.job_collections.schemas import (
-    JobCollectionCreate,
-    JobCollectionFolderCreate,
     JobCollectionFolderResponse,
-    JobCollectionFolderUpdate,
-    JobCollectionListParams,
     JobCollectionListResponse,
     JobCollectionResponse,
-    JobCollectionUpdate,
 )
 
 
@@ -43,22 +49,20 @@ class JobCollectionService:
         db: AsyncSession,
         *,
         user_id: int,
-        payload: JobCollectionFolderCreate,
+        payload: JobCollectionFolderCreateCommand,
     ) -> JobCollectionFolderResponse:
         """创建当前用户岗位收藏夹。"""
 
+        await self.folder_repository.get_or_create_default_folder(db, user_id=user_id)
         try:
-            await self.folder_repository.get_or_create_default_folder(db, user_id=user_id)
             folder = await self.folder_repository.create_folder(
                 db,
                 user_id=user_id,
                 name=payload.name,
                 sort_order=payload.sort_order,
             )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        except IntegrityError as exc:
+            raise JobCollectionFolderNameConflictError() from exc
         return self._folder_to_response(folder)
 
     async def list_folders(
@@ -69,13 +73,8 @@ class JobCollectionService:
     ) -> list[JobCollectionFolderResponse]:
         """查询当前用户 active 收藏夹。"""
 
-        try:
-            await self.folder_repository.get_or_create_default_folder(db, user_id=user_id)
-            await db.commit()
-            folders = await self.folder_repository.list_active_folders(db, user_id=user_id)
-        except Exception:
-            await db.rollback()
-            raise
+        await self.folder_repository.get_or_create_default_folder(db, user_id=user_id)
+        folders = await self.folder_repository.list_active_folders(db, user_id=user_id)
         return [self._folder_to_response(folder) for folder in folders]
 
     async def update_folder(
@@ -84,29 +83,27 @@ class JobCollectionService:
         *,
         user_id: int,
         folder_id: int,
-        payload: JobCollectionFolderUpdate,
+        payload: JobCollectionFolderUpdateCommand,
     ) -> JobCollectionFolderResponse:
         """更新当前用户岗位收藏夹。"""
 
-        try:
-            folder = await self.folder_repository.get_user_folder(
-                db,
-                user_id=user_id,
-                folder_id=folder_id,
-            )
-            if folder is None:
-                raise JobCollectionFolderNotFoundError()
-            values = self._build_update_values(payload)
-            if values:
+        folder = await self.folder_repository.get_user_folder(
+            db,
+            user_id=user_id,
+            folder_id=folder_id,
+        )
+        if folder is None:
+            raise JobCollectionFolderNotFoundError()
+        values = self._build_update_values(payload)
+        if values:
+            try:
                 folder = await self.folder_repository.update_folder(
                     db,
                     folder=folder,
                     values=values,
                 )
-                await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+            except IntegrityError as exc:
+                raise JobCollectionFolderNameConflictError() from exc
         return self._folder_to_response(folder)
 
     async def set_default_folder(
@@ -136,13 +133,8 @@ class JobCollectionService:
                 folder=folder,
                 values={"is_default": True},
             )
-            await db.commit()
         except IntegrityError as exc:
-            await db.rollback()
             raise DefaultJobCollectionFolderConflictError() from exc
-        except Exception:
-            await db.rollback()
-            raise
         return self._folder_to_response(folder)
 
     async def archive_folder(
@@ -154,31 +146,26 @@ class JobCollectionService:
     ) -> JobCollectionFolderResponse:
         """归档收藏夹，并把其中收藏移回默认未分组。"""
 
-        try:
-            folder = await self.folder_repository.get_user_folder(
-                db,
-                user_id=user_id,
-                folder_id=folder_id,
-            )
-            if folder is None:
-                raise JobCollectionFolderNotFoundError()
-            if folder.is_default:
-                raise DefaultJobCollectionFolderCannotArchiveError()
-            default_folder = await self.folder_repository.get_or_create_default_folder(
-                db,
-                user_id=user_id,
-            )
-            await self.folder_repository.move_collections_to_default_folder(
-                db,
-                user_id=user_id,
-                folder_id=folder_id,
-                default_folder_id=default_folder.id,
-            )
-            folder = await self.folder_repository.archive_folder(db, folder=folder)
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        folder = await self.folder_repository.get_user_folder(
+            db,
+            user_id=user_id,
+            folder_id=folder_id,
+        )
+        if folder is None:
+            raise JobCollectionFolderNotFoundError()
+        if folder.is_default:
+            raise DefaultJobCollectionFolderCannotArchiveError()
+        default_folder = await self.folder_repository.get_or_create_default_folder(
+            db,
+            user_id=user_id,
+        )
+        await self.folder_repository.move_collections_to_default_folder(
+            db,
+            user_id=user_id,
+            folder_id=folder_id,
+            default_folder_id=default_folder.id,
+        )
+        folder = await self.folder_repository.archive_folder(db, folder=folder)
         return self._folder_to_response(folder)
 
     async def collect_job(
@@ -186,32 +173,29 @@ class JobCollectionService:
         db: AsyncSession,
         *,
         user_id: int,
-        payload: JobCollectionCreate,
+        payload: JobCollectionCreateCommand,
     ) -> JobCollectionResponse:
         """新增或恢复当前用户岗位收藏。"""
 
-        try:
-            await self._ensure_job_exists(db, job_post_id=payload.job_post_id)
-            folder_id = await self._resolve_folder_id(
-                db,
-                user_id=user_id,
-                folder_id=payload.folder_id,
-            )
-            create_values = payload.model_dump(exclude={"job_post_id"})
-            create_values["folder_id"] = folder_id
-            update_values = payload.model_dump(exclude={"job_post_id"}, exclude_unset=True)
-            update_values["folder_id"] = folder_id
-            collection = await self.collection_repository.upsert_active_collection(
-                db,
-                user_id=user_id,
-                job_post_id=payload.job_post_id,
-                create_values=create_values,
-                update_values=update_values,
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        await self._ensure_job_exists(db, job_post_id=payload.job_post_id)
+        folder_id = await self._resolve_folder_id(
+            db,
+            user_id=user_id,
+            folder_id=payload.folder_id,
+        )
+        create_values = {
+            "folder_id": folder_id,
+            "note": payload.note,
+        }
+        update_values = self._build_update_values(payload, exclude={"job_post_id"})
+        update_values["folder_id"] = folder_id
+        collection = await self.collection_repository.upsert_active_collection(
+            db,
+            user_id=user_id,
+            job_post_id=payload.job_post_id,
+            create_values=create_values,
+            update_values=update_values,
+        )
         return self._collection_to_response(collection)
 
     async def list_collections(
@@ -219,7 +203,7 @@ class JobCollectionService:
         db: AsyncSession,
         *,
         user_id: int,
-        params: JobCollectionListParams,
+        params: JobCollectionListQuery,
     ) -> JobCollectionListResponse:
         """分页查询当前用户岗位收藏。"""
 
@@ -230,8 +214,10 @@ class JobCollectionService:
             user_id=user_id,
             params=params,
         )
-        has_next = len(collections) > params.page_size
-        page_items = collections[: params.page_size]
+        page_items, has_next = trim_page_items(
+            collections,
+            page_size=params.page_size,
+        )
         return JobCollectionListResponse(
             items=[self._collection_to_response(collection) for collection in page_items],
             page=params.page,
@@ -246,35 +232,30 @@ class JobCollectionService:
         *,
         user_id: int,
         collection_id: int,
-        payload: JobCollectionUpdate,
+        payload: JobCollectionUpdateCommand,
     ) -> JobCollectionResponse:
         """更新当前用户 active 岗位收藏。"""
 
-        try:
-            collection = await self.collection_repository.get_user_collection(
+        collection = await self.collection_repository.get_user_collection(
+            db,
+            user_id=user_id,
+            collection_id=collection_id,
+        )
+        if collection is None:
+            raise JobCollectionNotFoundError()
+        values = self._build_update_values(payload)
+        if "folder_id" in payload.fields_set:
+            values["folder_id"] = await self._resolve_folder_id(
                 db,
                 user_id=user_id,
-                collection_id=collection_id,
+                folder_id=payload.folder_id,
             )
-            if collection is None:
-                raise JobCollectionNotFoundError()
-            values = self._build_update_values(payload)
-            if "folder_id" in payload.model_fields_set:
-                values["folder_id"] = await self._resolve_folder_id(
-                    db,
-                    user_id=user_id,
-                    folder_id=payload.folder_id,
-                )
-            if values:
-                collection = await self.collection_repository.update_collection(
-                    db,
-                    collection=collection,
-                    values=values,
-                )
-                await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        if values:
+            collection = await self.collection_repository.update_collection(
+                db,
+                collection=collection,
+                values=values,
+            )
         return self._collection_to_response(collection)
 
     async def remove_collection(
@@ -286,18 +267,13 @@ class JobCollectionService:
     ) -> JobCollectionResponse:
         """软取消当前用户岗位收藏。"""
 
-        try:
-            collection = await self.collection_repository.remove_collection(
-                db,
-                user_id=user_id,
-                collection_id=collection_id,
-            )
-            if collection is None:
-                raise JobCollectionNotFoundError()
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        collection = await self.collection_repository.remove_collection(
+            db,
+            user_id=user_id,
+            collection_id=collection_id,
+        )
+        if collection is None:
+            raise JobCollectionNotFoundError()
         return self._collection_to_response(collection)
 
     async def _ensure_job_exists(self, db: AsyncSession, *, job_post_id: int) -> None:
@@ -342,10 +318,20 @@ class JobCollectionService:
 
     @staticmethod
     def _build_update_values(
-        payload: JobCollectionFolderUpdate | JobCollectionUpdate,
+        payload: (
+            JobCollectionFolderUpdateCommand
+            | JobCollectionUpdateCommand
+            | JobCollectionCreateCommand
+        ),
+        *,
+        exclude: set[str] | None = None,
     ) -> dict[str, object]:
         values: dict[str, object] = {}
-        for field_name in payload.model_fields_set:
+        excluded_fields = exclude or set()
+        field_names = payload.fields_set or _changed_dataclass_fields(payload)
+        for field_name in field_names:
+            if field_name in excluded_fields:
+                continue
             values[field_name] = getattr(payload, field_name)
         return values
 
@@ -386,3 +372,15 @@ def build_job_collection_service() -> JobCollectionService:
         folder_repository=JobCollectionFolderRepository(),
         collection_repository=JobCollectionRepository(),
     )
+
+
+def _changed_dataclass_fields(payload: object) -> frozenset[str]:
+    """推断直接构造 command 时显式改变过的字段。"""
+
+    changed_fields: set[str] = set()
+    for field_name, field_info in payload.__dataclass_fields__.items():  # type: ignore[attr-defined]
+        if field_name == "fields_set" or field_info.default is MISSING:
+            continue
+        if getattr(payload, field_name) != field_info.default:
+            changed_fields.add(field_name)
+    return frozenset(changed_fields)

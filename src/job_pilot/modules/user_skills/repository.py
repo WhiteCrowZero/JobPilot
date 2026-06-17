@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_skills.models import Skill
+from job_pilot.modules.user_skills.contracts import UserSkillListQuery
 from job_pilot.modules.user_skills.enums import UserSkillStatus
 from job_pilot.modules.user_skills.models import UserSkill
-from job_pilot.modules.user_skills.schemas import UserSkillListParams
 
 
 class UserSkillRepository:
@@ -40,7 +40,7 @@ class UserSkillRepository:
         db: AsyncSession,
         *,
         user_id: int,
-        params: UserSkillListParams,
+        params: UserSkillListQuery,
     ) -> list[UserSkill]:
         """分页读取当前用户技能画像。"""
 
@@ -77,30 +77,22 @@ class UserSkillRepository:
         证据、经验年限等已有信息。
         """
 
-        insert_stmt = pg_insert(UserSkill).values(
-            user_id=user_id,
-            skill_id=skill_id,
-            status=UserSkillStatus.ACTIVE,
-            assessed_at=func.now(),
-            archived_at=None,
-            **create_values,
+        return await upsert_restoring_record(
+            db,
+            model=UserSkill,
+            conflict_constraint="uq_user_skills_user_skill",
+            identity_values={
+                "user_id": user_id,
+                "skill_id": skill_id,
+            },
+            create_values=create_values,
+            restore_values={
+                "status": UserSkillStatus.ACTIVE,
+                "assessed_at": func.now(),
+                "archived_at": None,
+            },
+            update_values=update_values,
         )
-        conflict_values: dict[str, object] = {
-            "status": UserSkillStatus.ACTIVE,
-            "assessed_at": func.now(),
-            "archived_at": None,
-            "updated_at": func.now(),
-        }
-        conflict_values.update(update_values)
-        result = await db.execute(
-            insert_stmt.on_conflict_do_update(
-                constraint="uq_user_skills_user_skill",
-                set_=conflict_values,
-            )
-            .returning(UserSkill)
-            .execution_options(populate_existing=True)
-        )
-        return result.scalar_one()
 
     async def update_user_skill(
         self,

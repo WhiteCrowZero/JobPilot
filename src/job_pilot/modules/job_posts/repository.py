@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import (
     JobPost,
     JobPostDetail,
     JobSource,
 )
-from job_pilot.modules.job_posts.schemas import JobPostSearchParams
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 
 
@@ -28,7 +28,7 @@ class JobPostRepository:
     async def search_job_posts(
         self,
         db: AsyncSession,
-        params: JobPostSearchParams,
+        params: JobPostSearchQuery,
     ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
 
@@ -73,7 +73,7 @@ class JobPostRepository:
         )
         return await db.scalar(stmt)
 
-    def _build_base_search_stmt(self, params: JobPostSearchParams) -> Select[tuple[int]]:
+    def _build_base_search_stmt(self, params: JobPostSearchQuery) -> Select[tuple[int]]:
         stmt = select(JobPost.id).join(JobPost.source)
         conditions: list[ColumnElement[bool]] = [JobPost.deleted_at.is_(None)]
 
@@ -166,7 +166,7 @@ class JobPostRepository:
     def _apply_sort(
         self,
         stmt: Select[tuple[int]],
-        params: JobPostSearchParams,
+        params: JobPostSearchQuery,
     ) -> Select[tuple[int]]:
         # 排序字段必须白名单控制，不允许前端直接传数据库字段名。
         match params.sort:

@@ -7,20 +7,31 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.application import JobPilot, build_job_pilot
 from job_pilot.core.cache import CacheStore, DistributedLock
 from job_pilot.core.exceptions import ForbiddenError, UnauthorizedError
 from job_pilot.core.resources import AppResources
 from job_pilot.modules.auth.exceptions import TokenError
 from job_pilot.modules.auth.utils.tokens import decode_access_token
-from job_pilot.modules.users import repository as user_repository
 from job_pilot.modules.users.models import User
+from job_pilot.modules.users.service import build_user_service
 
 
 def get_resources(request: Request) -> AppResources:
     return request.app.state.resources
 
 
+def get_job_pilot(request: Request) -> JobPilot:
+    """构建当前请求使用的公开业务入口。"""
+
+    return build_job_pilot(get_resources(request))
+
+
+JobPilotDep = Annotated[JobPilot, Depends(get_job_pilot)]
+
+
 bearer_scheme = HTTPBearer(auto_error=False)
+user_service = build_user_service()
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
@@ -49,7 +60,7 @@ async def get_current_user(token: TokenDep, session: DbSessionDep) -> User:
     except TokenError as exc:
         raise UnauthorizedError(exc.message, code=exc.code) from exc
 
-    user = await user_repository.get_user_by_id(token_data.user_id, session)
+    user = await user_service.get_user_by_id(session, user_id=token_data.user_id)
     if user is None:
         raise UnauthorizedError("Could not validate credentials", code="INVALID_CREDENTIALS")
     return user

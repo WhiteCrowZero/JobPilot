@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.modules.ingestion.normalization.skills import (
+from job_pilot.core.exceptions import NotFoundError
+from job_pilot.core.pagination import trim_page_items
+from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     normalize_skill_alias,
 )
@@ -74,8 +76,10 @@ class SkillDictionaryService:
             limit=params.limit + 1,
         )
         total = await self.repository.count_skills(db=db, keyword=params.keyword)
-        has_next = len(skills) > params.page_size
-        page_items = skills[: params.page_size]
+        page_items, has_next = trim_page_items(
+            skills,
+            page_size=params.page_size,
+        )
         return SkillListResponse(
             items=[SkillListItem(id=skill.id, name=skill.name) for skill in page_items],
             page=params.page,
@@ -108,6 +112,9 @@ class JobSkillSyncService:
         本方法只负责事务 2 的业务内容：job_post_skills 与 job_posts.skill_content_hash。
         外层 orchestration/worker 决定何时调用和如何提交事务。
         """
+
+        if not await self.repository.job_post_exists(db=db, job_post_id=job_post_id):
+            raise NotFoundError("Job post not found", code="JOB_POST_NOT_FOUND")
 
         # 注意此处的业务设计就是空技能时，如果之前已有技能关系，旧标签不会清掉
         if not candidates:
@@ -151,6 +158,7 @@ class JobSkillSyncService:
             job_post_id=job_post_id,
             skill_content_hash=skill_content_hash,
         )
+        # TODO：filter-options 缓存后续改为后台刷新或在技能同步成功后统一失效。
         return SkillSyncResult(
             job_post_id=job_post_id,
             synced=True,

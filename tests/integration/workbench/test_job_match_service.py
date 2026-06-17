@@ -3,62 +3,31 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.application import JobPilot
 from job_pilot.core.exceptions import ValidationError
 from job_pilot.modules.job_match.enums import JobMatchAnalysisStatus, JobMatchSkillStatus
 from job_pilot.modules.job_match.exceptions import (
     JobPostForMatchNotFoundError,
     JobTargetForMatchNotFoundError,
 )
-from job_pilot.modules.job_match.repository import JobSkillSnapshot, UserSkillSnapshot
-from job_pilot.modules.job_match.service import build_job_match_service, classify_skill_coverage
-from job_pilot.modules.user_skills.schemas import UserSkillUpsert
-from job_pilot.modules.user_skills.service import build_user_skill_service
-from tests.helpers.workbench import (
+from job_pilot.modules.job_targets.contracts import JobTargetCreateCommand as JobTargetCreate
+from job_pilot.modules.user_skills.contracts import UserSkillUpsertCommand as UserSkillUpsert
+from tests.helpers.builders import (
     create_test_user,
     seed_test_job_post,
     seed_test_job_post_skills,
     seed_test_skill,
     seed_test_skills,
-    seed_test_target,
-    truncate_workbench_tables,
 )
-
-
-def test_classify_skill_coverage_splits_matched_weak_and_missing() -> None:
-    # Arrange
-    job_skills = [
-        JobSkillSnapshot(skill_id=1, skill_name="Python"),
-        JobSkillSnapshot(skill_id=2, skill_name="Redis"),
-        JobSkillSnapshot(skill_id=3, skill_name="MySQL"),
-    ]
-    user_skills = [
-        UserSkillSnapshot(skill_id=1, skill_name="Python", proficiency_level=4),
-        UserSkillSnapshot(skill_id=2, skill_name="Redis", proficiency_level=2),
-    ]
-
-    # Act
-    result = classify_skill_coverage(
-        job_skills=job_skills,
-        user_skills=user_skills,
-        required_level=3,
-    )
-
-    # Assert
-    assert [item.skill_name for item in result.matched_skills] == ["Python"]
-    assert [item.skill_name for item in result.weak_skills] == ["Redis"]
-    assert [item.skill_name for item in result.missing_skills] == ["MySQL"]
-    assert result.matched_skills[0].status == JobMatchSkillStatus.MATCHED
-    assert result.weak_skills[0].status == JobMatchSkillStatus.WEAK
-    assert result.missing_skills[0].status == JobMatchSkillStatus.MISSING
+from tests.helpers.database import truncate_workbench_tables
 
 
 @pytest.mark.asyncio
 async def test_analyze_job_skill_coverage_returns_intersection_counts(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
-    user_skill_service = build_user_skill_service()
 
     try:
         user = await create_test_user(db_session)
@@ -69,19 +38,16 @@ async def test_analyze_job_skill_coverage_returns_intersection_counts(
             job_post_id=job_post.id,
             skill_ids=[python.id, redis.id, mysql.id],
         )
-        await user_skill_service.upsert_user_skill(
-            db_session,
+        await pilot.workbench.upsert_user_skill(
             user_id=user.id,
             payload=UserSkillUpsert(skill_id=python.id, proficiency_level=4),
         )
-        await user_skill_service.upsert_user_skill(
-            db_session,
+        await pilot.workbench.upsert_user_skill(
             user_id=user.id,
             payload=UserSkillUpsert(skill_id=redis.id, proficiency_level=2),
         )
 
-        response = await match_service.analyze_job_skill_coverage(
-            db_session,
+        response = await pilot.workbench.analyze_job_skill_coverage(
             user_id=user.id,
             job_post_id=job_post.id,
             required_level=3,
@@ -102,17 +68,16 @@ async def test_analyze_job_skill_coverage_returns_intersection_counts(
 
 @pytest.mark.asyncio
 async def test_analyze_job_skill_coverage_does_not_score_empty_job_skills(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
 
     try:
         user = await create_test_user(db_session)
         job_post = await seed_test_job_post(db_session, title="Backend Engineer")
 
-        response = await match_service.analyze_job_skill_coverage(
-            db_session,
+        response = await pilot.workbench.analyze_job_skill_coverage(
             user_id=user.id,
             job_post_id=job_post.id,
         )
@@ -129,17 +94,16 @@ async def test_analyze_job_skill_coverage_does_not_score_empty_job_skills(
 
 @pytest.mark.asyncio
 async def test_analyze_job_skill_coverage_raises_for_missing_job_post(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
 
     try:
         user = await create_test_user(db_session)
 
         with pytest.raises(JobPostForMatchNotFoundError):
-            await match_service.analyze_job_skill_coverage(
-                db_session,
+            await pilot.workbench.analyze_job_skill_coverage(
                 user_id=user.id,
                 job_post_id=999_999,
             )
@@ -149,11 +113,10 @@ async def test_analyze_job_skill_coverage_raises_for_missing_job_post(
 
 @pytest.mark.asyncio
 async def test_archived_user_skill_is_treated_as_missing(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
-    user_skill_service = build_user_skill_service()
 
     try:
         user = await create_test_user(db_session)
@@ -164,19 +127,16 @@ async def test_archived_user_skill_is_treated_as_missing(
             job_post_id=job_post.id,
             skill_ids=[redis.id],
         )
-        await user_skill_service.upsert_user_skill(
-            db_session,
+        await pilot.workbench.upsert_user_skill(
             user_id=user.id,
             payload=UserSkillUpsert(skill_id=redis.id, proficiency_level=5),
         )
-        await user_skill_service.archive_user_skill(
-            db_session,
+        await pilot.workbench.archive_user_skill(
             user_id=user.id,
             skill_id=redis.id,
         )
 
-        response = await match_service.analyze_job_skill_coverage(
-            db_session,
+        response = await pilot.workbench.analyze_job_skill_coverage(
             user_id=user.id,
             job_post_id=job_post.id,
         )
@@ -190,20 +150,22 @@ async def test_archived_user_skill_is_treated_as_missing(
 
 @pytest.mark.asyncio
 async def test_analyze_target_skill_coverage_hides_other_users_target(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
 
     try:
         owner = await create_test_user(db_session, display_name="Owner")
         other_user = await create_test_user(db_session, display_name="Other")
         job_post = await seed_test_job_post(db_session, title="Backend Engineer")
-        target = await seed_test_target(db_session, user_id=owner.id, job_post_id=job_post.id)
+        target = await pilot.workbench.create_target(
+            user_id=owner.id,
+            payload=JobTargetCreate(job_post_id=job_post.id),
+        )
 
         with pytest.raises(JobTargetForMatchNotFoundError):
-            await match_service.analyze_target_skill_coverage(
-                db_session,
+            await pilot.workbench.analyze_target_skill_coverage(
                 user_id=other_user.id,
                 target_id=target.id,
             )
@@ -213,16 +175,15 @@ async def test_analyze_target_skill_coverage_hides_other_users_target(
 
 @pytest.mark.asyncio
 async def test_analyze_target_skill_summary_returns_empty_result_without_targets(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
 
     try:
         user = await create_test_user(db_session)
 
-        response = await match_service.analyze_target_skill_summary(
-            db_session,
+        response = await pilot.workbench.analyze_target_skill_summary(
             user_id=user.id,
         )
 
@@ -239,24 +200,22 @@ async def test_analyze_target_skill_summary_returns_empty_result_without_targets
 
 @pytest.mark.asyncio
 async def test_analyze_target_skill_summary_rejects_invalid_limit(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
 
     try:
         user = await create_test_user(db_session)
 
         with pytest.raises(ValidationError):
-            await match_service.analyze_target_skill_summary(
-                db_session,
+            await pilot.workbench.analyze_target_skill_summary(
                 user_id=user.id,
                 limit=0,
             )
 
         with pytest.raises(ValidationError):
-            await match_service.analyze_target_skill_summary(
-                db_session,
+            await pilot.workbench.analyze_target_skill_summary(
                 user_id=user.id,
                 limit=101,
             )
@@ -266,11 +225,10 @@ async def test_analyze_target_skill_summary_rejects_invalid_limit(
 
 @pytest.mark.asyncio
 async def test_analyze_target_skill_summary_sorts_by_target_count(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    match_service = build_job_match_service()
-    user_skill_service = build_user_skill_service()
 
     try:
         user = await create_test_user(db_session)
@@ -293,22 +251,24 @@ async def test_analyze_target_skill_summary_sorts_by_target_count(
             job_post_id=third_job.id,
             skill_ids=[python.id],
         )
-        await seed_test_target(
-            db_session,
+        await pilot.workbench.create_target(
             user_id=user.id,
-            job_post_id=first_job.id,
-            is_primary=True,
+            payload=JobTargetCreate(job_post_id=first_job.id, is_primary=True),
         )
-        await seed_test_target(db_session, user_id=user.id, job_post_id=second_job.id)
-        await seed_test_target(db_session, user_id=user.id, job_post_id=third_job.id)
-        await user_skill_service.upsert_user_skill(
-            db_session,
+        await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(job_post_id=second_job.id),
+        )
+        await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(job_post_id=third_job.id),
+        )
+        await pilot.workbench.upsert_user_skill(
             user_id=user.id,
             payload=UserSkillUpsert(skill_id=python.id, proficiency_level=3),
         )
 
-        response = await match_service.analyze_target_skill_summary(
-            db_session,
+        response = await pilot.workbench.analyze_target_skill_summary(
             user_id=user.id,
         )
 

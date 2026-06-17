@@ -24,6 +24,13 @@ class JobCollectionNotFoundError(NotFoundError):
         super().__init__(message=message, code="JOB_COLLECTION_NOT_FOUND")
 
 
+class JobCollectionFolderNameConflictError(ConflictError):
+    """同一用户下收藏夹名称重复。"""
+
+    def __init__(self, message: str = "Job collection folder name already exists"):
+        super().__init__(message=message, code="JOB_COLLECTION_FOLDER_NAME_CONFLICT")
+
+
 class DefaultJobCollectionFolderCannotArchiveError(ConflictError):
     """默认收藏夹不能归档。"""
 

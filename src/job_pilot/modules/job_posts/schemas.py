@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from job_pilot.core.pagination import PageParams, PageResult
+from job_pilot.modules.job_posts.contracts import JobPostSort
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -15,15 +15,6 @@ from job_pilot.modules.job_posts.enums import (
     WorkplaceType,
 )
 from job_pilot.modules.job_skills.schemas import SkillLabelResponse
-
-JobPostSort = Literal[
-    "published_at_desc",
-    "published_at_asc",
-    "created_at_desc",
-    "created_at_asc",
-    "salary_max_desc",
-    "salary_min_asc",
-]
 
 
 class JobPostSearchParams(PageParams):

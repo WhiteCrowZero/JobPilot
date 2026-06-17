@@ -1,181 +1,36 @@
 from __future__ import annotations
 
+from typing import Any, ClassVar
+
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.modules.ingestion.adapters import (
-    AlibabaJobAdapter,
-    JaabzJobAdapter,
-    JobDraft,
-    TencentJobAdapter,
-)
+from job_pilot.application import JobPilot
+from job_pilot.core.exceptions import ValidationError
+from job_pilot.modules.ingestion.adapters import ADAPTER_REGISTRY, BaseJobAdapter, JobDraft
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.enums import RawJobRecordStatus
 from job_pilot.modules.ingestion.models import RawJobRecord
-from job_pilot.modules.ingestion.normalization import normalize_job_draft, normalize_salary
-from job_pilot.modules.ingestion.repository import (
-    RawJobIngestionRepository,
-    RawRecordIngestionAction,
-)
-from job_pilot.modules.ingestion.service import JobSourceConfig, RawJobIngestionService
-from job_pilot.modules.job_posts.enums import (
-    EducationLevel,
-    ExperienceLevel,
-    SalaryPeriod,
-    WorkplaceType,
-)
-from job_pilot.modules.job_posts.models import (
-    JobPost,
-    JobPostDetail,
-    JobSource,
-)
+from job_pilot.modules.ingestion.repository import RawRecordIngestionAction
+from job_pilot.modules.ingestion.service import JobSourceConfig
+from job_pilot.modules.job_posts.enums import EducationLevel, ExperienceLevel, SalaryPeriod
+from job_pilot.modules.job_posts.models import JobPost, JobPostDetail, JobSource
 from job_pilot.modules.job_skills.models import JobPostSkill
-
-
-def test_normalize_job_draft_splits_core_job_fields() -> None:
-    draft = JobDraft(
-        source_platform="alibaba",
-        external_job_id="ali-001",
-        source_url="https://jobs.example.com/ali-001",
-        title="  后端开发工程师  ",
-        company_name="阿里巴巴",
-        company_url=None,
-        raw_location_text="北京/上海/远程",
-        raw_country_name="中国",
-        raw_city_name=None,
-        raw_description="负责 FastAPI 服务建设，提供签证支持和 relocation support。",
-        raw_experience="3-5年",
-        raw_education="本科",
-        raw_employment_type="全职",
-        raw_flexibility="混合办公",
-        raw_salary="15-30K",
-        raw_skills=[],
-        published_at_raw="2026-06-01",
-    )
-
-    normalized = normalize_job_draft(draft)
-
-    assert normalized.title == "后端开发工程师"
-    assert normalized.salary_text == "15-30K"
-    assert normalized.salary_min == 15000
-    assert normalized.salary_max == 30000
-    assert normalized.salary_period == SalaryPeriod.UNKNOWN
-    assert normalized.experience_level == ExperienceLevel.MID
-    assert normalized.experience_min_years == 3
-    assert normalized.experience_max_years == 5
-    assert normalized.education_level == EducationLevel.BACHELOR
-    assert normalized.workplace_type == WorkplaceType.REMOTE
-    assert normalized.locations == "北京 / 上海 / 远程 / 中国"
-    assert normalized.is_remote is True
-    assert normalized.has_visa_sponsorship is True
-    assert normalized.has_relocation_support is True
-
-
-def test_normalize_salary_supports_common_text() -> None:
-    monthly_salary = normalize_salary("20-30K·14薪")
-    yearly_salary = normalize_salary("USD 80k-120k/year")
-    daily_salary = normalize_salary("150-200元/天")
-    salary_with_context = normalize_salary("岗位描述：薪资 1.5-2万/月，经验不限")
-    negotiable_salary = normalize_salary("Salary: negotiable")
-    experience_text = normalize_salary("岗位要求：3-5年经验，负责从0到1建设后端系统")
-    payroll_experience_text = normalize_salary(
-        "Minimum of 2-4 years of payroll processing experience.",
-    )
-
-    assert monthly_salary.salary_text == "20-30K·14薪"
-    assert monthly_salary.salary_min == 20000
-    assert monthly_salary.salary_max == 30000
-    assert monthly_salary.salary_currency == "CNY"
-    assert monthly_salary.salary_period == SalaryPeriod.UNKNOWN
-    assert yearly_salary.salary_min == 80000
-    assert yearly_salary.salary_max == 120000
-    assert yearly_salary.salary_currency == "USD"
-    assert yearly_salary.salary_period == SalaryPeriod.YEAR
-    assert daily_salary.salary_min == 150
-    assert daily_salary.salary_max == 200
-    assert daily_salary.salary_period == SalaryPeriod.DAY
-    assert salary_with_context.salary_text == "1.5-2万/月"
-    assert salary_with_context.salary_min == 15000
-    assert salary_with_context.salary_max == 20000
-    assert salary_with_context.salary_period == SalaryPeriod.MONTH
-    assert negotiable_salary.salary_text == "Salary: negotiable"
-    assert negotiable_salary.salary_min is None
-    assert negotiable_salary.salary_max is None
-    assert experience_text.salary_text is None
-    assert payroll_experience_text.salary_text is None
-
-
-def test_normalize_job_draft_does_not_extract_salary_from_description() -> None:
-    draft = JobDraft(
-        source_platform="jaabz",
-        external_job_id="jb-001",
-        source_url="https://jobs.example.com/jb-001",
-        title="Backend Engineer",
-        company_name="Remote Tech",
-        company_url=None,
-        raw_location_text="Remote",
-        raw_country_name=None,
-        raw_city_name=None,
-        raw_description="岗位描述：薪资 1.5-2万/月，要求 3-5 年经验。",
-        raw_experience="3-5 years",
-        raw_education=None,
-        raw_employment_type="full-time",
-        raw_flexibility="remote",
-        raw_salary=None,
-        raw_skills=[],
-        published_at_raw="2026-06-01",
-    )
-
-    normalized = normalize_job_draft(draft)
-
-    assert normalized.salary_text is None
-    assert normalized.salary_min is None
-    assert normalized.salary_max is None
-    assert normalized.salary_period == SalaryPeriod.UNKNOWN
-
-
-def test_job_adapters_do_not_guess_skill_like_fields_without_explicit_mapping() -> None:
-    """adapter 只映射已确认的来源字段，不从通用字段名猜测技能。"""
-
-    raw_payload = {
-        "job_id": "source-001",
-        "id": "source-001",
-        "position_id": "source-001",
-        "job_url": "https://jobs.example.com/source-001",
-        "title": "Backend Engineer",
-        "job_name": "Backend Engineer",
-        "area": "北京",
-        "city_name": "北京",
-        "skills": ["Python", "FastAPI"],
-        "tags": ["Redis"],
-        "keywords": "Docker, Kubernetes",
-        "技术栈": "FastAPI / PostgreSQL",
-        "技能": "Python",
-    }
-
-    drafts = [
-        AlibabaJobAdapter().to_draft(raw_payload),
-        TencentJobAdapter().to_draft(raw_payload),
-        JaabzJobAdapter().to_draft(raw_payload),
-    ]
-
-    assert [draft.raw_skills for draft in drafts] == [[], [], []]
+from tests.helpers.database import truncate_job_tables
 
 
 @pytest.mark.asyncio
-async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSession) -> None:
+async def test_consume_raw_job_message_normalizes_job_tables(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """原始岗位消息会通过公开入口规范化到岗位相关表。"""
+
     await truncate_job_tables(db_session)
 
     try:
-        service = RawJobIngestionService(
-            source_config=JobSourceConfig(
-                platform="alibaba",
-                name="阿里巴巴社招",
-                base_url="https://talent.taotian.com/off-campus",
-            ),
-            repository=RawJobIngestionRepository(),
-        )
+        source_config = _alibaba_source_config()
         message = RawJobCollectedMessage(
             message_id="alibaba:sample-001",
             source_platform="alibaba",
@@ -197,11 +52,10 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
             },
         )
 
-        first_result = await service.consume_raw_job_message(
-            session=db_session,
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=source_config,
             message=message,
         )
-        await db_session.commit()
 
         assert first_result.created_job_post is True
         assert [candidate.text for candidate in first_result.raw_skill_candidates] == []
@@ -243,14 +97,14 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
                 },
             }
         )
-        second_result = await service.consume_raw_job_message(
-            session=db_session,
+        second_result = await pilot.ingestion.consume_raw_job(
+            source_config=source_config,
             message=updated_message,
         )
-        await db_session.commit()
 
         job_post_count = await db_session.scalar(select(func.count()).select_from(JobPost))
         updated_job_post = (await db_session.execute(select(JobPost))).scalar_one()
+        await db_session.refresh(updated_job_post)
 
         assert second_result.created_job_post is False
         assert second_result.job_post_id == first_result.job_post_id
@@ -265,12 +119,14 @@ async def test_consume_raw_job_message_normalizes_job_tables(db_session: AsyncSe
 
 @pytest.mark.asyncio
 async def test_consume_raw_job_message_skips_duplicate_message_id(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
+    """重复 message_id 会命中摄入幂等保护。"""
+
     await truncate_job_tables(db_session)
 
     try:
-        service = _build_alibaba_ingestion_service()
         message = _build_alibaba_message(
             message_id="alibaba-idempotent:message-001",
             external_job_id="ali-message-001",
@@ -279,9 +135,12 @@ async def test_consume_raw_job_message_skips_duplicate_message_id(
             salary="20-30K",
         )
 
-        first_result = await service.consume_raw_job_message(session=db_session, message=message)
-        duplicate_result = await service.consume_raw_job_message(
-            session=db_session,
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=message,
+        )
+        duplicate_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
             message=message.model_copy(
                 update={
                     "raw_payload": {
@@ -291,7 +150,6 @@ async def test_consume_raw_job_message_skips_duplicate_message_id(
                 }
             ),
         )
-        await db_session.commit()
 
         raw_records = (await db_session.execute(select(RawJobRecord))).scalars().all()
         job_post = (await db_session.execute(select(JobPost))).scalar_one()
@@ -310,12 +168,14 @@ async def test_consume_raw_job_message_skips_duplicate_message_id(
 
 @pytest.mark.asyncio
 async def test_consume_raw_job_message_skips_duplicate_raw_content_hash(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
+    """不同 message_id 但原始内容相同时按 raw hash 去重。"""
+
     await truncate_job_tables(db_session)
 
     try:
-        service = _build_alibaba_ingestion_service()
         message = _build_alibaba_message(
             message_id="alibaba-idempotent:raw-001",
             external_job_id="ali-raw-001",
@@ -324,9 +184,12 @@ async def test_consume_raw_job_message_skips_duplicate_raw_content_hash(
             salary="25-35K",
         )
 
-        first_result = await service.consume_raw_job_message(session=db_session, message=message)
-        duplicate_raw_result = await service.consume_raw_job_message(
-            session=db_session,
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=message,
+        )
+        duplicate_raw_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
             message=message.model_copy(
                 update={
                     "message_id": "alibaba-idempotent:raw-002",
@@ -334,7 +197,6 @@ async def test_consume_raw_job_message_skips_duplicate_raw_content_hash(
                 }
             ),
         )
-        await db_session.commit()
 
         raw_record_count = await db_session.scalar(select(func.count()).select_from(RawJobRecord))
         job_post_count = await db_session.scalar(select(func.count()).select_from(JobPost))
@@ -355,13 +217,100 @@ async def test_consume_raw_job_message_skips_duplicate_raw_content_hash(
 
 
 @pytest.mark.asyncio
-async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_version(
+async def test_failed_raw_record_can_retry_with_same_raw_payload(
+    pilot: JobPilot,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """失败 raw 再次被新消息观测到时，会重新进入清洗流程。"""
+
+    class RetryableAdapter(BaseJobAdapter):
+        source_platform: ClassVar[str] = "retry_test"
+        should_fail: ClassVar[bool] = True
+
+        def to_draft(self, raw_payload: dict[str, Any]) -> JobDraft:
+            _ = raw_payload
+            return JobDraft(
+                source_platform=self.source_platform,
+                external_job_id="retry-001",
+                source_url="https://jobs.example.com/retry-001",
+                title="" if self.should_fail else "Retry Backend Engineer",
+                company_name="Retry Tech",
+                company_url=None,
+                raw_location_text="Remote",
+                raw_country_name=None,
+                raw_city_name=None,
+                raw_description="Build backend APIs.",
+                raw_experience=None,
+                raw_education=None,
+                raw_employment_type=None,
+                raw_flexibility="remote",
+                raw_salary=None,
+                raw_skills=[],
+                published_at_raw=None,
+            )
+
+    monkeypatch.setitem(ADAPTER_REGISTRY, RetryableAdapter.source_platform, RetryableAdapter)
     await truncate_job_tables(db_session)
 
     try:
-        service = _build_alibaba_ingestion_service()
+        source_config = JobSourceConfig(
+            platform=RetryableAdapter.source_platform,
+            name="Retry Jobs",
+            base_url="https://jobs.example.com/retry",
+        )
+        message = RawJobCollectedMessage(
+            message_id="retry-test:001",
+            source_platform=RetryableAdapter.source_platform,
+            external_job_id="retry-001",
+            source_url="https://jobs.example.com/retry-001",
+            producer="retry_crawler",
+            raw_payload={"job_id": "retry-001"},
+        )
+
+        with pytest.raises(ValidationError):
+            await pilot.ingestion.consume_raw_job(source_config=source_config, message=message)
+
+        failed_raw_record = (await db_session.execute(select(RawJobRecord))).scalar_one()
+        failed_raw_record_id = failed_raw_record.id
+        failed_raw_record_status = failed_raw_record.status
+        failed_raw_record_error_message = failed_raw_record.error_message
+        first_job_post_count = await db_session.scalar(select(func.count()).select_from(JobPost))
+
+        RetryableAdapter.should_fail = False
+        retry_result = await pilot.ingestion.consume_raw_job(
+            source_config=source_config,
+            message=message.model_copy(update={"message_id": "retry-test:002"}),
+        )
+
+        db_session.expire_all()
+        retried_raw_record = (await db_session.execute(select(RawJobRecord))).scalar_one()
+        job_post = (await db_session.execute(select(JobPost))).scalar_one()
+
+        assert failed_raw_record_status == RawJobRecordStatus.FAILED
+        assert failed_raw_record_error_message is not None
+        assert "title" in failed_raw_record_error_message
+        assert first_job_post_count == 0
+        assert retry_result.action == RawRecordIngestionAction.RETRY_PROCESS
+        assert retry_result.raw_record_id == failed_raw_record_id
+        assert retried_raw_record.status == RawJobRecordStatus.NORMALIZED
+        assert retried_raw_record.seen_count == 2
+        assert job_post.title == "Retry Backend Engineer"
+    finally:
+        RetryableAdapter.should_fail = True
+        await truncate_job_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_version(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """同岗位 fingerprint 的新原始版本会更新岗位表。"""
+
+    await truncate_job_tables(db_session)
+
+    try:
         message = _build_alibaba_message(
             message_id="alibaba-idempotent:fingerprint-001",
             external_job_id="ali-fingerprint-001",
@@ -371,9 +320,12 @@ async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_ver
             description="负责 FastAPI 后端服务建设，包含签证支持。",
         )
 
-        first_result = await service.consume_raw_job_message(session=db_session, message=message)
-        updated_result = await service.consume_raw_job_message(
-            session=db_session,
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=message,
+        )
+        updated_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
             message=message.model_copy(
                 update={
                     "message_id": "alibaba-idempotent:fingerprint-002",
@@ -386,7 +338,6 @@ async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_ver
                 }
             ),
         )
-        await db_session.commit()
 
         raw_record_count = await db_session.scalar(select(func.count()).select_from(RawJobRecord))
         job_post_count = await db_session.scalar(select(func.count()).select_from(JobPost))
@@ -412,31 +363,112 @@ async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_ver
 
 
 @pytest.mark.asyncio
-async def test_ingestion_source_uses_platform_and_base_url_identity(
+async def test_consume_raw_job_message_keeps_mobility_flags_when_new_description_is_unknown(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
+    """新详情文本未提及签证/搬迁时，不用 unknown 覆盖旧明确值。"""
+
     await truncate_job_tables(db_session)
 
     try:
-        social_service = RawJobIngestionService(
-            source_config=JobSourceConfig(
-                platform="alibaba",
-                name="阿里巴巴社招",
-                base_url="https://talent.taotian.com/off-campus",
-            ),
-            repository=RawJobIngestionRepository(),
+        first_message = _build_alibaba_message(
+            message_id="alibaba-mobility:001",
+            external_job_id="ali-mobility-001",
+            source_url="https://jobs.example.com/mobility-001",
+            title="平台后端工程师",
+            description="负责 FastAPI 后端服务建设，包含签证支持和 relocation support。",
         )
-        campus_service = RawJobIngestionService(
-            source_config=JobSourceConfig(
-                platform="alibaba",
-                name="阿里巴巴校招",
-                base_url="https://talent.taotian.com/campus",
-            ),
-            repository=RawJobIngestionRepository(),
+        second_message = _build_alibaba_message(
+            message_id="alibaba-mobility:002",
+            external_job_id="ali-mobility-001",
+            source_url="https://jobs.example.com/mobility-001",
+            title="平台后端工程师",
+            description="负责 FastAPI 后端服务建设。",
         )
 
-        await social_service.consume_raw_job_message(
-            session=db_session,
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=first_message,
+        )
+        second_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=second_message,
+        )
+
+        detail = (await db_session.execute(select(JobPostDetail))).scalar_one()
+
+        assert second_result.job_post_id == first_result.job_post_id
+        assert detail.has_visa_sponsorship is True
+        assert detail.has_relocation_support is True
+        assert detail.work_authorization_note == "包含签证支持说明；包含搬迁支持说明"
+    finally:
+        await truncate_job_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_consume_raw_job_message_overwrites_mobility_flags_with_explicit_denial(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """新详情文本明确不支持时，允许 False 覆盖旧 True 标记。"""
+
+    await truncate_job_tables(db_session)
+
+    try:
+        first_message = _build_alibaba_message(
+            message_id="alibaba-mobility-denial:001",
+            external_job_id="ali-mobility-denial-001",
+            source_url="https://jobs.example.com/mobility-denial-001",
+            title="平台后端工程师",
+            description="负责 FastAPI 后端服务建设，包含签证支持和 relocation support。",
+        )
+        second_message = _build_alibaba_message(
+            message_id="alibaba-mobility-denial:002",
+            external_job_id="ali-mobility-denial-001",
+            source_url="https://jobs.example.com/mobility-denial-001",
+            title="平台后端工程师",
+            description="负责 FastAPI 后端服务建设，不提供签证支持，no relocation is provided.",
+        )
+
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=first_message,
+        )
+        second_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=second_message,
+        )
+
+        detail = (await db_session.execute(select(JobPostDetail))).scalar_one()
+
+        assert second_result.job_post_id == first_result.job_post_id
+        assert detail.has_visa_sponsorship is False
+        assert detail.has_relocation_support is False
+        assert detail.work_authorization_note == "包含不支持签证说明；包含不支持搬迁说明"
+    finally:
+        await truncate_job_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_ingestion_source_uses_platform_and_base_url_identity(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """来源身份由 platform 和 base_url 区分。"""
+
+    await truncate_job_tables(db_session)
+
+    try:
+        social_source_config = _alibaba_source_config()
+        campus_source_config = JobSourceConfig(
+            platform="alibaba",
+            name="阿里巴巴校招",
+            base_url="https://talent.taotian.com/campus",
+        )
+
+        await pilot.ingestion.consume_raw_job(
+            source_config=social_source_config,
             message=_build_alibaba_message(
                 message_id="alibaba-source:social",
                 external_job_id="ali-social-001",
@@ -444,8 +476,8 @@ async def test_ingestion_source_uses_platform_and_base_url_identity(
                 title="后端开发工程师",
             ),
         )
-        await campus_service.consume_raw_job_message(
-            session=db_session,
+        await pilot.ingestion.consume_raw_job(
+            source_config=campus_source_config,
             message=_build_alibaba_message(
                 message_id="alibaba-source:campus",
                 external_job_id="ali-campus-001",
@@ -453,8 +485,8 @@ async def test_ingestion_source_uses_platform_and_base_url_identity(
                 title="后端开发工程师校招",
             ),
         )
-        await social_service.consume_raw_job_message(
-            session=db_session,
+        await pilot.ingestion.consume_raw_job(
+            source_config=social_source_config,
             message=_build_alibaba_message(
                 message_id="alibaba-source:social-2",
                 external_job_id="ali-social-002",
@@ -462,7 +494,6 @@ async def test_ingestion_source_uses_platform_and_base_url_identity(
                 title="搜索后端工程师",
             ),
         )
-        await db_session.commit()
 
         sources = (
             (await db_session.execute(select(JobSource).order_by(JobSource.base_url)))
@@ -478,37 +509,14 @@ async def test_ingestion_source_uses_platform_and_base_url_identity(
         await truncate_job_tables(db_session)
 
 
-def _build_alibaba_ingestion_service() -> RawJobIngestionService:
-    """构造测试用阿里社招摄入服务。"""
+def _alibaba_source_config() -> JobSourceConfig:
+    """构造测试用阿里社招来源配置。"""
 
-    return RawJobIngestionService(
-        source_config=JobSourceConfig(
-            platform="alibaba",
-            name="阿里巴巴社招",
-            base_url="https://talent.taotian.com/off-campus",
-        ),
-        repository=RawJobIngestionRepository(),
+    return JobSourceConfig(
+        platform="alibaba",
+        name="阿里巴巴社招",
+        base_url="https://talent.taotian.com/off-campus",
     )
-
-
-async def truncate_job_tables(session: AsyncSession) -> None:
-    await session.rollback()
-    await session.execute(
-        text(
-            """
-            TRUNCATE TABLE
-                job_post_skills,
-                job_post_details,
-                job_posts,
-                raw_job_records,
-                job_sources,
-                skill_aliases,
-                skills
-            RESTART IDENTITY CASCADE
-            """
-        )
-    )
-    await session.commit()
 
 
 def _build_alibaba_message(

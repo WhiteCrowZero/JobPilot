@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.cache import CacheStore
-from job_pilot.modules.auth import repository as auth_repository
+from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.enums import AuthProvider
 from job_pilot.modules.auth.exceptions import (
     AuthIdentityAlreadyExistsError,
@@ -15,11 +16,7 @@ from job_pilot.modules.auth.exceptions import (
     WeakPasswordError,
 )
 from job_pilot.modules.auth.models import AuthIdentity
-from job_pilot.modules.auth.schemas import (
-    EmailRegisterRequest,
-    PhoneRegisterRequest,
-    TokenResponse,
-)
+from job_pilot.modules.auth.repository import AuthRepository, build_auth_repository
 from job_pilot.modules.auth.utils.email import normalize_email
 from job_pilot.modules.auth.utils.password import (
     hash_password,
@@ -32,67 +29,91 @@ from job_pilot.modules.auth.utils.refresh_store import (
     store_refresh_token,
 )
 from job_pilot.modules.auth.utils.tokens import create_token_pair
-from job_pilot.modules.users import repository as user_repository
 from job_pilot.modules.users.enums import UserStatus
 from job_pilot.modules.users.models import User
-from job_pilot.modules.users.schemas import UserRead
+from job_pilot.modules.users.service import UserService, build_user_service
 
 logger = logging.getLogger(__name__)
 
 
-async def register_with_email_password(
-    payload: EmailRegisterRequest,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    return await register_with_password_identity(
-        provider=AuthProvider.EMAIL,
-        provider_subject=normalize_email(str(payload.email)),
-        display_name=payload.display_name,
-        password=payload.password,
-        session=session,
-        cache=cache,
-    )
+@dataclass(frozen=True)
+class AuthTokenSnapshot:
+    """认证成功后的轻量 token 快照。"""
+
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: User
 
 
-async def register_with_phone_password(
-    payload: PhoneRegisterRequest,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    return await register_with_password_identity(
-        provider=AuthProvider.PHONE,
-        provider_subject=normalize_phone(payload.phone),
-        display_name=payload.display_name,
-        password=payload.password,
-        session=session,
-        cache=cache,
-    )
+class AuthService:
+    """认证 service，负责注册、登录、刷新和退出登录。"""
 
+    def __init__(self, repository: AuthRepository, user_service: UserService) -> None:
+        self.repository: AuthRepository = repository
+        self.user_service: UserService = user_service
 
-async def register_with_password_identity(
-    *,
-    provider: AuthProvider,
-    provider_subject: str,
-    display_name: str,
-    password: str,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    try:
-        validate_password_strong(password)
-    except ValueError as exc:
-        raise WeakPasswordError(str(exc)) from exc
+    async def register_with_email_password(
+        self,
+        db: AsyncSession,
+        *,
+        payload: EmailRegisterCommand,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """使用邮箱和密码注册。"""
 
-    password_hash = hash_password(password)
-    user: User | None = None
+        return await self._register_with_password_identity(
+            db,
+            provider=AuthProvider.EMAIL,
+            provider_subject=normalize_email(str(payload.email)),
+            display_name=payload.display_name,
+            password=payload.password,
+            cache=cache,
+        )
 
-    try:
-        async with session.begin():
-            existing_identity = await auth_repository.get_password_identity(
+    async def register_with_phone_password(
+        self,
+        db: AsyncSession,
+        *,
+        payload: PhoneRegisterCommand,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """使用手机号和密码注册。"""
+
+        return await self._register_with_password_identity(
+            db,
+            provider=AuthProvider.PHONE,
+            provider_subject=normalize_phone(payload.phone),
+            display_name=payload.display_name,
+            password=payload.password,
+            cache=cache,
+        )
+
+    async def _register_with_password_identity(
+        self,
+        db: AsyncSession,
+        *,
+        provider: AuthProvider,
+        provider_subject: str,
+        display_name: str,
+        password: str,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """创建用户、登录身份和密码凭证。"""
+
+        try:
+            validate_password_strong(password)
+        except ValueError as exc:
+            raise WeakPasswordError(str(exc)) from exc
+
+        password_hash = hash_password(password)
+        user: User | None = None
+
+        try:
+            existing_identity = await self.repository.get_password_identity(
+                db,
                 provider=provider,
                 provider_subject=provider_subject,
-                session=session,
             )
             if existing_identity is not None:
                 logger.warning(
@@ -101,77 +122,88 @@ async def register_with_password_identity(
                 )
                 raise AuthIdentityAlreadyExistsError.from_provider(provider)
 
-            user = await user_repository.create_user(
+            user = await self.user_service.create_user(
+                db,
                 display_name=display_name,
-                session=session,
                 status=UserStatus.ACTIVE,
                 is_superuser=False,
             )
-            await auth_repository.create_password_identity(
+
+            if user is None:
+                raise InvalidCredentialsError("Registered user cannot be loaded")
+
+            await self.repository.create_password_identity(
+                db,
                 user=user,
                 provider=provider,
                 provider_subject=provider_subject,
                 password_hash=password_hash,
-                session=session,
             )
-    except IntegrityError as exc:
-        logger.warning(
-            "Registration rejected by database unique constraint",
-            extra={"auth_provider": provider.value},
+        except IntegrityError as exc:
+            logger.warning(
+                "Registration rejected by database unique constraint",
+                extra={"auth_provider": provider.value},
+            )
+            raise AuthIdentityAlreadyExistsError.from_provider(provider) from exc
+
+        if user is None:
+            raise InvalidCredentialsError("Registered user cannot be loaded")
+        return await self._build_token_snapshot(user=user, cache=cache)
+
+    async def login_with_email_password(
+        self,
+        db: AsyncSession,
+        *,
+        email: str,
+        password: str,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """使用邮箱和密码登录。"""
+
+        return await self._login_with_password_identity(
+            db,
+            provider=AuthProvider.EMAIL,
+            provider_subject=normalize_email(email),
+            password=password,
+            cache=cache,
         )
-        raise AuthIdentityAlreadyExistsError.from_provider(provider) from exc
 
-    if user is None:
-        raise InvalidCredentialsError("Registered user cannot be loaded")
-    return await build_token_response(user, cache)
+    async def login_with_phone_password(
+        self,
+        db: AsyncSession,
+        *,
+        phone: str,
+        password: str,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """使用手机号和密码登录。"""
 
+        return await self._login_with_password_identity(
+            db,
+            provider=AuthProvider.PHONE,
+            provider_subject=normalize_phone(phone),
+            password=password,
+            cache=cache,
+        )
 
-async def login_with_email_password(
-    email: str,
-    password: str,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    return await login_with_password_identity(
-        provider=AuthProvider.EMAIL,
-        provider_subject=normalize_email(email),
-        password=password,
-        session=session,
-        cache=cache,
-    )
+    async def _login_with_password_identity(
+        self,
+        db: AsyncSession,
+        *,
+        provider: AuthProvider,
+        provider_subject: str,
+        password: str,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """校验密码登录身份并更新登录时间。"""
 
+        user: User | None = None
 
-async def login_with_phone_password(
-    phone: str,
-    password: str,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    return await login_with_password_identity(
-        provider=AuthProvider.PHONE,
-        provider_subject=normalize_phone(phone),
-        password=password,
-        session=session,
-        cache=cache,
-    )
-
-
-async def login_with_password_identity(
-    *,
-    provider: AuthProvider,
-    provider_subject: str,
-    password: str,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    user: User | None = None
-
-    async with session.begin():
-        identity = await authenticate_identity(
+        identity = await self.authenticate_identity(
+            db,
             provider=provider,
             provider_subject=provider_subject,
             password=password,
-            session=session,
         )
         if identity is None:
             logger.warning(
@@ -186,92 +218,117 @@ async def login_with_password_identity(
             )
             raise UserInactiveError()
 
-        user = await user_repository.update_last_login_at(identity.user, session)
-        await auth_repository.update_identity_last_login_at(identity, session)
+        if identity.user is None:
+            raise InvalidCredentialsError("Authenticated user cannot be loaded")
 
-    if user is None:
-        raise InvalidCredentialsError("Authenticated user cannot be loaded")
-    return await build_token_response(user, cache)
+        user = await self.user_service.update_last_login_at(db, user=identity.user)
+        await self.repository.update_identity_last_login_at(db, identity=identity)
+
+        if user is None:
+            raise InvalidCredentialsError("Authenticated user cannot be loaded")
+        return await self._build_token_snapshot(user=user, cache=cache)
+
+    async def refresh_login(
+        self,
+        db: AsyncSession,
+        *,
+        refresh_token: str,
+        cache: CacheStore,
+    ) -> AuthTokenSnapshot:
+        """消费 refresh token 并签发新的 token 对。"""
+
+        token_data = await consume_refresh_token(refresh_token, cache)
+        user = await self.user_service.get_user_by_id(db, user_id=token_data.user_id)
+        if user is None:
+            logger.warning("Refresh token rejected because user was not found")
+            raise InvalidCredentialsError("Invalid refresh token")
+        if not user.is_active:
+            logger.warning("Refresh token rejected for inactive user", extra={"user_id": user.id})
+            raise UserInactiveError()
+
+        return await self._build_token_snapshot(user=user, cache=cache)
+
+    async def authenticate_identity(
+        self,
+        db: AsyncSession,
+        *,
+        provider: AuthProvider,
+        provider_subject: str,
+        password: str,
+    ) -> AuthIdentity | None:
+        """校验密码登录身份。"""
+
+        identity = await self.repository.get_password_identity(
+            db,
+            provider=provider,
+            provider_subject=provider_subject,
+        )
+        if identity is None or identity.password_credential is None:
+            return None
+        if not verify_password(password, identity.password_credential.password_hash):
+            return None
+        return identity
+
+    async def authenticate_user_by_email(
+        self,
+        db: AsyncSession,
+        *,
+        email: str,
+        password: str,
+    ) -> User | None:
+        """使用邮箱密码认证用户。"""
+
+        identity = await self.authenticate_identity(
+            db,
+            provider=AuthProvider.EMAIL,
+            provider_subject=normalize_email(email),
+            password=password,
+        )
+        if identity is None:
+            return None
+        return identity.user
+
+    async def authenticate_user_by_phone(
+        self,
+        db: AsyncSession,
+        *,
+        phone: str,
+        password: str,
+    ) -> User | None:
+        """使用手机号密码认证用户。"""
+
+        identity = await self.authenticate_identity(
+            db,
+            provider=AuthProvider.PHONE,
+            provider_subject=normalize_phone(phone),
+            password=password,
+        )
+        if identity is None:
+            return None
+        return identity.user
+
+    async def logout_by_token(self, *, refresh_token: str, cache: CacheStore) -> None:
+        """消费 refresh token，实现退出登录。"""
+
+        await consume_refresh_token(refresh_token, cache)
+
+    async def _build_token_snapshot(self, *, user: User, cache: CacheStore) -> AuthTokenSnapshot:
+        """生成 token 快照并写入 refresh token 存储。"""
+
+        access_token, refresh_token = create_token_pair(user.id)
+        await store_refresh_token(refresh_token, cache)
+        return AuthTokenSnapshot(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            user=user,
+        )
 
 
-async def refresh_login(
-    refresh_token: str,
-    session: AsyncSession,
-    cache: CacheStore,
-) -> TokenResponse:
-    token_data = await consume_refresh_token(refresh_token, cache)
-    user = await user_repository.get_user_by_id(token_data.user_id, session)
-    if user is None:
-        logger.warning("Refresh token rejected because user was not found")
-        raise InvalidCredentialsError("Invalid refresh token")
-    if not user.is_active:
-        logger.warning("Refresh token rejected for inactive user", extra={"user_id": user.id})
-        raise UserInactiveError()
+def build_auth_service() -> AuthService:
+    """构建认证 service。"""
 
-    return await build_token_response(user, cache)
-
-
-async def authenticate_identity(
-    *,
-    provider: AuthProvider,
-    provider_subject: str,
-    password: str,
-    session: AsyncSession,
-) -> AuthIdentity | None:
-    identity = await auth_repository.get_password_identity(
-        provider=provider,
-        provider_subject=provider_subject,
-        session=session,
+    return AuthService(
+        repository=build_auth_repository(),
+        user_service=build_user_service(),
     )
-    if identity is None or identity.password_credential is None:
-        return None
-    if not verify_password(password, identity.password_credential.password_hash):
-        return None
-    return identity
-
-
-async def authenticate_user_by_email(
-    email: str,
-    password: str,
-    session: AsyncSession,
-) -> User | None:
-    identity = await authenticate_identity(
-        provider=AuthProvider.EMAIL,
-        provider_subject=normalize_email(email),
-        password=password,
-        session=session,
-    )
-    if identity is None:
-        return None
-    return identity.user
-
-
-async def authenticate_user_by_phone(
-    phone: str,
-    password: str,
-    session: AsyncSession,
-) -> User | None:
-    identity = await authenticate_identity(
-        provider=AuthProvider.PHONE,
-        provider_subject=normalize_phone(phone),
-        password=password,
-        session=session,
-    )
-    if identity is None:
-        return None
-    return identity.user
-
-
-async def build_token_response(user: User, cache: CacheStore) -> TokenResponse:
-    access_token, refresh_token = create_token_pair(user.id)
-    await store_refresh_token(refresh_token, cache)
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        token_type="bearer",
-        user=UserRead.model_validate(user),
-    )
-
-
-async def logout_by_token(refresh_token: str, cache: CacheStore) -> None:
-    await consume_refresh_token(refresh_token, cache)

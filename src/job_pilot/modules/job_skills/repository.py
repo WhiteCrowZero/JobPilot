@@ -42,7 +42,7 @@ class SkillDictionaryRepository:
         skill_id: int,
         alias: str,
     ) -> bool:
-        from job_pilot.modules.ingestion.normalization.skills import normalize_skill_alias
+        from job_pilot.modules.job_skills.normalization import normalize_skill_alias
 
         normalized_alias = normalize_skill_alias(alias)
         if not normalized_alias:
@@ -109,6 +109,19 @@ class SkillDictionaryRepository:
 
 class JobPostSkillRepository:
     """岗位技能关系数据库操作。"""
+
+    async def job_post_exists(self, *, db: AsyncSession, job_post_id: int) -> bool:
+        """判断岗位是否存在且未软删除。"""
+
+        result = await db.execute(
+            select(JobPost.id)
+            .where(
+                JobPost.id == job_post_id,
+                JobPost.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
     async def get_job_skill_content_hash(
         self,

@@ -14,7 +14,7 @@ JobPilot 是一个基于 FastAPI
 
 ## 2. 开发规范
 
-1. 遵循 MVP 优先的迭代方式，除非用户明确要求，否则不要进行整体重写，直接明确拒绝。
+1. 遵循 MVP 优先的迭代方式，同时所有的大规模修改都不需要考虑兼容，直接全部改掉，因为目前还是开走迭代时期。
 2. 以后每做一个模块，都要同时产出 3 个东西：
     ```text
     1. 代码
@@ -58,7 +58,8 @@ uv pip
 推荐验证命令：
 
 ```bash
-uv run ruff check .
+uv run ruff format
+uv run ruff check . --fix
 uv run pytest
 uv run pyright
 ```
@@ -96,6 +97,8 @@ JobPilot/
 |-- src/
 |   `-- job_pilot/
 |       |-- main.py
+|       |-- uow.py
+|       |-- application.py
 |       |-- api/
 |       |   |-- deps.py
 |       |   |-- health.py
@@ -132,7 +135,7 @@ JobPilot/
     |-- conftest.py
     |-- api/
     |-- unit/
-    `-- smoke/
+    `-- integration/
 ```
 
 ## 6. 项目最终简历形态
