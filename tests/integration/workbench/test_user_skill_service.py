@@ -7,15 +7,19 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
+from job_pilot.modules.user_skills.contracts import (
+    UserSkillListQuery as UserSkillListParams,
+)
+from job_pilot.modules.user_skills.contracts import (
+    UserSkillUpdateCommand as UserSkillUpdate,
+)
+from job_pilot.modules.user_skills.contracts import (
+    UserSkillUpsertCommand as UserSkillUpsert,
+)
 from job_pilot.modules.user_skills.enums import UserSkillSource, UserSkillStatus
 from job_pilot.modules.user_skills.exceptions import (
     StandardSkillNotFoundError,
     UserSkillNotFoundError,
-)
-from job_pilot.modules.user_skills.schemas import (
-    UserSkillListParams,
-    UserSkillUpdate,
-    UserSkillUpsert,
 )
 from tests.helpers.builders import (
     create_test_user,
@@ -113,6 +117,18 @@ async def test_restore_archived_skill_overwrites_explicit_fields(
                 last_used_at=date(2026, 6, 1),
                 evidence=None,
                 note="New note",
+                fields_set=frozenset(
+                    {
+                        "skill_id",
+                        "source",
+                        "proficiency_level",
+                        "interest_level",
+                        "years_of_experience",
+                        "last_used_at",
+                        "evidence",
+                        "note",
+                    }
+                ),
             ),
         )
 

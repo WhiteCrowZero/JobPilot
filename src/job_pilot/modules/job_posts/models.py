@@ -348,20 +348,16 @@ class JobPostDetail(TimestampMixin, Base):
         comment="岗位正文。MVP 合并职责、要求、详情等文本，不单独拆 requirements。",
     )
 
-    has_visa_sponsorship: Mapped[bool] = mapped_column(
+    has_visa_sponsorship: Mapped[bool | None] = mapped_column(
         Boolean,
-        nullable=False,
-        default=False,
-        server_default=false(),
-        comment="是否明确提供签证支持。冷字段，不参与高频查询。",
+        nullable=True,
+        comment="是否明确提供签证支持；空表示来源未提及。冷字段，不参与高频查询。",
     )
 
-    has_relocation_support: Mapped[bool] = mapped_column(
+    has_relocation_support: Mapped[bool | None] = mapped_column(
         Boolean,
-        nullable=False,
-        default=False,
-        server_default=false(),
-        comment="是否明确提供搬迁支持。冷字段，不参与高频查询。",
+        nullable=True,
+        comment="是否明确提供搬迁支持；空表示来源未提及。冷字段，不参与高频查询。",
     )
 
     work_authorization_note: Mapped[str | None] = mapped_column(

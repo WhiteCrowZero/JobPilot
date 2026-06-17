@@ -6,10 +6,14 @@ from fastapi import APIRouter, Depends, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.core.pagination import PageParams
+from job_pilot.modules.job_targets.contracts import (
+    JobTargetCreateCommand,
+    JobTargetListQuery,
+    JobTargetUpdateCommand,
+)
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.schemas import (
     JobTargetCreate,
-    JobTargetListParams,
     JobTargetListResponse,
     JobTargetResponse,
     JobTargetUpdate,
@@ -28,7 +32,15 @@ async def create_target(
 
     return await pilot.workbench.create_target(
         user_id=current_user.id,
-        payload=payload,
+        payload=JobTargetCreateCommand(
+            job_post_id=payload.job_post_id,
+            source_collection_id=payload.source_collection_id,
+            priority=payload.priority,
+            is_primary=payload.is_primary,
+            note=payload.note,
+            target_date=payload.target_date,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 
@@ -41,7 +53,7 @@ async def list_targets(
 ) -> JobTargetListResponse:
     """查询当前用户目标岗位。"""
 
-    params = JobTargetListParams(
+    params = JobTargetListQuery(
         statuses=statuses,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -64,7 +76,14 @@ async def update_target(
     return await pilot.workbench.update_target(
         user_id=current_user.id,
         target_id=target_id,
-        payload=payload,
+        payload=JobTargetUpdateCommand(
+            status=payload.status,
+            priority=payload.priority,
+            is_primary=payload.is_primary,
+            note=payload.note,
+            target_date=payload.target_date,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 

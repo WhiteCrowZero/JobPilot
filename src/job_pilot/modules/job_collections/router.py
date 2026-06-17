@@ -6,12 +6,18 @@ from fastapi import APIRouter, Depends
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.core.pagination import PageParams
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionCreateCommand,
+    JobCollectionFolderCreateCommand,
+    JobCollectionFolderUpdateCommand,
+    JobCollectionListQuery,
+    JobCollectionUpdateCommand,
+)
 from job_pilot.modules.job_collections.schemas import (
     JobCollectionCreate,
     JobCollectionFolderCreate,
     JobCollectionFolderResponse,
     JobCollectionFolderUpdate,
-    JobCollectionListParams,
     JobCollectionListResponse,
     JobCollectionResponse,
     JobCollectionUpdate,
@@ -30,7 +36,10 @@ async def create_collection_folder(
 
     return await pilot.workbench.create_collection_folder(
         user_id=current_user.id,
-        payload=payload,
+        payload=JobCollectionFolderCreateCommand(
+            name=payload.name,
+            sort_order=payload.sort_order,
+        ),
     )
 
 
@@ -56,7 +65,11 @@ async def update_collection_folder(
     return await pilot.workbench.update_collection_folder(
         user_id=current_user.id,
         folder_id=folder_id,
-        payload=payload,
+        payload=JobCollectionFolderUpdateCommand(
+            name=payload.name,
+            sort_order=payload.sort_order,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 
@@ -98,7 +111,12 @@ async def collect_job(
 
     return await pilot.workbench.collect_job(
         user_id=current_user.id,
-        payload=payload,
+        payload=JobCollectionCreateCommand(
+            job_post_id=payload.job_post_id,
+            folder_id=payload.folder_id,
+            note=payload.note,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 
@@ -112,7 +130,7 @@ async def list_collections(
 ) -> JobCollectionListResponse:
     """查询当前用户岗位收藏。"""
 
-    params = JobCollectionListParams(
+    params = JobCollectionListQuery(
         include_removed=include_removed,
         folder_id=folder_id,
         page=pagination.page,
@@ -136,7 +154,11 @@ async def update_collection(
     return await pilot.workbench.update_collection(
         user_id=current_user.id,
         collection_id=collection_id,
-        payload=payload,
+        payload=JobCollectionUpdateCommand(
+            folder_id=payload.folder_id,
+            note=payload.note,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 

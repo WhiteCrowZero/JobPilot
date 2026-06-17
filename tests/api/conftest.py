@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-import pytest
+import httpx
 import pytest_asyncio
+from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.application import JobPilot, build_job_pilot
 from job_pilot.core.config import settings
 from job_pilot.core.resources import AppResources, build_app_resources
+from job_pilot.main import create_app
 from tests.helpers.cache import MemoryCacheStore
 from tests.helpers.database import truncate_auth_user_tables
 
@@ -16,9 +17,15 @@ from tests.helpers.database import truncate_auth_user_tables
 @pytest_asyncio.fixture
 async def app_resources() -> AsyncIterator[AppResources]:
     resources = build_app_resources(settings)
+    cache = MemoryCacheStore()
+    test_resources = AppResources(
+        database=resources.database,
+        cache=cache,
+    )
     try:
-        yield resources
+        yield test_resources
     finally:
+        await cache.close()
         await resources.close()
 
 
@@ -34,22 +41,18 @@ async def db_session(app_resources: AppResources) -> AsyncIterator[AsyncSession]
 
 
 @pytest_asyncio.fixture
-async def pilot_resources(app_resources: AppResources) -> AsyncIterator[AppResources]:
-    """构建面向库公开接口测试的资源容器。"""
-
-    cache = MemoryCacheStore()
-    resources = AppResources(
-        database=app_resources.database,
-        cache=cache,
-    )
-    try:
-        yield resources
-    finally:
-        await cache.close()
+async def test_app(app_resources: AppResources) -> FastAPI:
+    app = create_app()
+    app.state.resources = app_resources
+    return app
 
 
-@pytest.fixture
-def pilot(pilot_resources: AppResources) -> JobPilot:
-    """返回 JobPilot 公开库入口。"""
-
-    return build_job_pilot(pilot_resources)
+@pytest_asyncio.fixture
+async def api_client(
+    test_app: FastAPI,
+    db_session: AsyncSession,
+) -> AsyncIterator[httpx.AsyncClient]:
+    _ = db_session
+    transport = httpx.ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client

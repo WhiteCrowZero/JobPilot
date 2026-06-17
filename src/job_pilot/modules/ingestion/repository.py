@@ -445,21 +445,21 @@ class RawJobIngestionRepository:
                     ),
                     "has_visa_sponsorship": case(
                         (
-                            excluded.description.is_not(None),
+                            excluded.has_visa_sponsorship.is_not(None),
                             excluded.has_visa_sponsorship,
                         ),
                         else_=JobPostDetail.has_visa_sponsorship,
                     ),
                     "has_relocation_support": case(
                         (
-                            excluded.description.is_not(None),
+                            excluded.has_relocation_support.is_not(None),
                             excluded.has_relocation_support,
                         ),
                         else_=JobPostDetail.has_relocation_support,
                     ),
                     "work_authorization_note": case(
                         (
-                            excluded.description.is_not(None),
+                            func.nullif(excluded.work_authorization_note, "").is_not(None),
                             excluded.work_authorization_note,
                         ),
                         else_=JobPostDetail.work_authorization_note,

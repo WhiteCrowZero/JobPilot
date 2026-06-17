@@ -50,8 +50,8 @@ class NormalizedExperience:
 class NormalizedMobility:
     """规范化后的海外流动性信息。"""
 
-    has_visa_sponsorship: bool
-    has_relocation_support: bool
+    has_visa_sponsorship: bool | None
+    has_relocation_support: bool | None
     work_authorization_note: str | None
 
 
@@ -79,6 +79,6 @@ class NormalizedJob:
     salary_currency: str
     salary_period: SalaryPeriod
     published_at: datetime | None
-    has_visa_sponsorship: bool
-    has_relocation_support: bool
+    has_visa_sponsorship: bool | None
+    has_relocation_support: bool | None
     work_authorization_note: str | None

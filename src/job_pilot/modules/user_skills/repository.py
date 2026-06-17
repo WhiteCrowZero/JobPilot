@@ -6,9 +6,9 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_skills.models import Skill
+from job_pilot.modules.user_skills.contracts import UserSkillListQuery
 from job_pilot.modules.user_skills.enums import UserSkillStatus
 from job_pilot.modules.user_skills.models import UserSkill
-from job_pilot.modules.user_skills.schemas import UserSkillListParams
 
 
 class UserSkillRepository:
@@ -40,7 +40,7 @@ class UserSkillRepository:
         db: AsyncSession,
         *,
         user_id: int,
-        params: UserSkillListParams,
+        params: UserSkillListQuery,
     ) -> list[UserSkill]:
         """分页读取当前用户技能画像。"""
 

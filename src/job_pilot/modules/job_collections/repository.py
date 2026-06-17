@@ -6,12 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from job_pilot.db.upsert import upsert_restoring_record
+from job_pilot.modules.job_collections.contracts import JobCollectionListQuery
 from job_pilot.modules.job_collections.enums import (
     JobCollectionFolderStatus,
     JobCollectionStatus,
 )
 from job_pilot.modules.job_collections.models import JobCollection, JobCollectionFolder
-from job_pilot.modules.job_collections.schemas import JobCollectionListParams
 from job_pilot.modules.job_posts.models import JobPost
 
 DEFAULT_COLLECTION_FOLDER_NAME = "默认收藏夹"
@@ -246,7 +246,7 @@ class JobCollectionRepository:
         db: AsyncSession,
         *,
         user_id: int,
-        params: JobCollectionListParams,
+        params: JobCollectionListQuery,
     ) -> list[JobCollection]:
         """分页读取当前用户岗位收藏。"""
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from starlette import status
 
 from job_pilot.api.deps import JobPilotDep
+from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.schemas import (
     EmailLoginRequest,
     EmailRegisterRequest,
@@ -25,7 +26,13 @@ async def register_with_email(
     payload: EmailRegisterRequest,
     pilot: JobPilotDep,
 ) -> TokenResponse:
-    token_snapshot = await pilot.auth.register_with_email(payload)
+    token_snapshot = await pilot.auth.register_with_email(
+        EmailRegisterCommand(
+            email=str(payload.email),
+            password=payload.password,
+            display_name=payload.display_name,
+        )
+    )
     return _to_token_response(token_snapshot)
 
 
@@ -34,7 +41,13 @@ async def register_with_phone(
     payload: PhoneRegisterRequest,
     pilot: JobPilotDep,
 ) -> TokenResponse:
-    token_snapshot = await pilot.auth.register_with_phone(payload)
+    token_snapshot = await pilot.auth.register_with_phone(
+        PhoneRegisterCommand(
+            phone=payload.phone,
+            password=payload.password,
+            display_name=payload.display_name,
+        )
+    )
     return _to_token_response(token_snapshot)
 
 

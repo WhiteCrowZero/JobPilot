@@ -4,6 +4,21 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionCreateCommand as JobCollectionCreate,
+)
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionFolderCreateCommand as JobCollectionFolderCreate,
+)
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionFolderUpdateCommand as JobCollectionFolderUpdate,
+)
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionListQuery as JobCollectionListParams,
+)
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionUpdateCommand as JobCollectionUpdate,
+)
 from job_pilot.modules.job_collections.enums import (
     JobCollectionFolderStatus,
     JobCollectionStatus,
@@ -14,13 +29,6 @@ from job_pilot.modules.job_collections.exceptions import (
     JobCollectionFolderNotFoundError,
     JobCollectionNotFoundError,
     JobPostForCollectionNotFoundError,
-)
-from job_pilot.modules.job_collections.schemas import (
-    JobCollectionCreate,
-    JobCollectionFolderCreate,
-    JobCollectionFolderUpdate,
-    JobCollectionListParams,
-    JobCollectionUpdate,
 )
 from tests.helpers.builders import (
     create_test_user,
@@ -328,7 +336,11 @@ async def test_update_remove_and_list_collections_are_user_isolated(
         updated = await pilot.workbench.update_collection(
             user_id=owner.id,
             collection_id=backend_collection.id,
-            payload=JobCollectionUpdate(note="High priority", folder_id=None),
+            payload=JobCollectionUpdate(
+                note="High priority",
+                folder_id=None,
+                fields_set=frozenset({"note", "folder_id"}),
+            ),
         )
         filtered = await pilot.workbench.list_collections(
             user_id=owner.id,

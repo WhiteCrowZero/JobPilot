@@ -10,8 +10,8 @@ from job_pilot.modules.job_match.exceptions import (
     JobPostForMatchNotFoundError,
     JobTargetForMatchNotFoundError,
 )
-from job_pilot.modules.job_targets.schemas import JobTargetCreate
-from job_pilot.modules.user_skills.schemas import UserSkillUpsert
+from job_pilot.modules.job_targets.contracts import JobTargetCreateCommand as JobTargetCreate
+from job_pilot.modules.user_skills.contracts import UserSkillUpsertCommand as UserSkillUpsert
 from tests.helpers.builders import (
     create_test_user,
     seed_test_job_post,

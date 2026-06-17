@@ -4,15 +4,19 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
+from job_pilot.modules.job_targets.contracts import (
+    JobTargetCreateCommand as JobTargetCreate,
+)
+from job_pilot.modules.job_targets.contracts import (
+    JobTargetListQuery as JobTargetListParams,
+)
+from job_pilot.modules.job_targets.contracts import (
+    JobTargetUpdateCommand as JobTargetUpdate,
+)
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.exceptions import (
     JobPostForTargetNotFoundError,
     JobTargetNotFoundError,
-)
-from job_pilot.modules.job_targets.schemas import (
-    JobTargetCreate,
-    JobTargetListParams,
-    JobTargetUpdate,
 )
 from tests.helpers.builders import create_test_user, seed_test_job_post
 from tests.helpers.database import truncate_workbench_tables

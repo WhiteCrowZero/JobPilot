@@ -7,10 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
+from job_pilot.modules.auth.contracts import (
+    EmailRegisterCommand as EmailRegisterRequest,
+)
+from job_pilot.modules.auth.contracts import (
+    PhoneRegisterCommand as PhoneRegisterRequest,
+)
 from job_pilot.modules.auth.enums import AuthProvider
 from job_pilot.modules.auth.exceptions import InvalidCredentialsError
 from job_pilot.modules.auth.models import AuthIdentity, AuthPasswordCredential
-from job_pilot.modules.auth.schemas import EmailRegisterRequest, PhoneRegisterRequest
 from job_pilot.modules.auth.utils.tokens import decode_access_token, decode_refresh_token
 
 

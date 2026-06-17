@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from job_pilot.api.deps import JobPilotDep
 from job_pilot.core.pagination import PageParams
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery, JobPostSort
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -18,8 +19,6 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostDetailResponse,
     JobPostFilterOptionsResponse,
     JobPostListResponse,
-    JobPostSearchParams,
-    JobPostSort,
 )
 
 router = APIRouter()
@@ -53,7 +52,16 @@ async def search_job_posts(
 ) -> JobPostListResponse:
     """查询岗位列表，支持关键词、枚举、薪资、地点文本和时间范围筛选。"""
 
-    params = JobPostSearchParams(
+    if experience_min_years is not None and experience_max_years is not None:
+        if experience_min_years > experience_max_years:
+            raise HTTPException(
+                status_code=422,
+                detail="experience_min_years must be <= experience_max_years",
+            )
+    if salary_min is not None and salary_max is not None and salary_min > salary_max:
+        raise HTTPException(status_code=422, detail="salary_min must be <= salary_max")
+
+    params = JobPostSearchQuery(
         keyword=keyword,
         source_platforms=source_platforms,
         statuses=statuses,

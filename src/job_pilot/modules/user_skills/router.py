@@ -6,8 +6,12 @@ from fastapi import APIRouter, Depends, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.core.pagination import PageParams
+from job_pilot.modules.user_skills.contracts import (
+    UserSkillListQuery,
+    UserSkillUpdateCommand,
+    UserSkillUpsertCommand,
+)
 from job_pilot.modules.user_skills.schemas import (
-    UserSkillListParams,
     UserSkillListResponse,
     UserSkillResponse,
     UserSkillUpdate,
@@ -27,7 +31,17 @@ async def upsert_user_skill(
 
     return await pilot.workbench.upsert_user_skill(
         user_id=current_user.id,
-        payload=payload,
+        payload=UserSkillUpsertCommand(
+            skill_id=payload.skill_id,
+            source=payload.source,
+            proficiency_level=payload.proficiency_level,
+            interest_level=payload.interest_level,
+            years_of_experience=payload.years_of_experience,
+            last_used_at=payload.last_used_at,
+            evidence=payload.evidence,
+            note=payload.note,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 
@@ -41,7 +55,7 @@ async def list_user_skills(
 ) -> UserSkillListResponse:
     """查询当前用户技能画像列表。"""
 
-    params = UserSkillListParams(
+    params = UserSkillListQuery(
         include_archived=include_archived,
         skill_ids=skill_ids,
         page=pagination.page,
@@ -65,7 +79,16 @@ async def update_user_skill(
     return await pilot.workbench.update_user_skill(
         user_id=current_user.id,
         skill_id=skill_id,
-        payload=payload,
+        payload=UserSkillUpdateCommand(
+            source=payload.source,
+            proficiency_level=payload.proficiency_level,
+            interest_level=payload.interest_level,
+            years_of_experience=payload.years_of_experience,
+            last_used_at=payload.last_used_at,
+            evidence=payload.evidence,
+            note=payload.note,
+            fields_set=frozenset(payload.model_fields_set),
+        ),
     )
 
 

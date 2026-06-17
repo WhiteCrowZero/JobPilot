@@ -80,3 +80,35 @@ def test_normalize_job_draft_does_not_extract_salary_from_description() -> None:
     assert normalized.salary_min is None
     assert normalized.salary_max is None
     assert normalized.salary_period == SalaryPeriod.UNKNOWN
+    assert normalized.has_visa_sponsorship is None
+    assert normalized.has_relocation_support is None
+
+
+def test_normalize_job_draft_detects_explicit_mobility_denial() -> None:
+    """岗位流动性字段支持明确否定语义。"""
+
+    draft = JobDraft(
+        source_platform="jaabz",
+        external_job_id="jb-002",
+        source_url="https://jobs.example.com/jb-002",
+        title="Backend Engineer",
+        company_name="Remote Tech",
+        company_url=None,
+        raw_location_text="Remote",
+        raw_country_name=None,
+        raw_city_name=None,
+        raw_description="No visa sponsorship. No relocation is provided.",
+        raw_experience=None,
+        raw_education=None,
+        raw_employment_type="full-time",
+        raw_flexibility="remote",
+        raw_salary=None,
+        raw_skills=[],
+        published_at_raw="2026-06-01",
+    )
+
+    normalized = normalize_job_draft(draft)
+
+    assert normalized.has_visa_sponsorship is False
+    assert normalized.has_relocation_support is False
+    assert normalized.work_authorization_note == "包含不支持签证说明；包含不支持搬迁说明"

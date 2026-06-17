@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_pilot.core.cache import CacheStore
 from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -25,7 +26,6 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostFilterOptionsResponse,
     JobPostListItem,
     JobPostListResponse,
-    JobPostSearchParams,
 )
 from job_pilot.modules.job_skills.repository import JobPostSkillRepository
 from job_pilot.modules.job_skills.schemas import SkillLabelResponse
@@ -52,7 +52,7 @@ class JobPostService:
     async def search_job_posts(
         self,
         db: AsyncSession,
-        params: JobPostSearchParams,
+        params: JobPostSearchQuery,
     ) -> JobPostListResponse:
         job_posts = await self.repository.search_job_posts(db=db, params=params)
         page_items, has_next = trim_page_items(

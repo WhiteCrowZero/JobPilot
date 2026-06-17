@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.cache import CacheStore
+from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.enums import AuthProvider
 from job_pilot.modules.auth.exceptions import (
     AuthIdentityAlreadyExistsError,
@@ -16,7 +17,6 @@ from job_pilot.modules.auth.exceptions import (
 )
 from job_pilot.modules.auth.models import AuthIdentity
 from job_pilot.modules.auth.repository import AuthRepository, build_auth_repository
-from job_pilot.modules.auth.schemas import EmailRegisterRequest, PhoneRegisterRequest
 from job_pilot.modules.auth.utils.email import normalize_email
 from job_pilot.modules.auth.utils.password import (
     hash_password,
@@ -57,7 +57,7 @@ class AuthService:
         self,
         db: AsyncSession,
         *,
-        payload: EmailRegisterRequest,
+        payload: EmailRegisterCommand,
         cache: CacheStore,
     ) -> AuthTokenSnapshot:
         """使用邮箱和密码注册。"""
@@ -75,7 +75,7 @@ class AuthService:
         self,
         db: AsyncSession,
         *,
-        payload: PhoneRegisterRequest,
+        payload: PhoneRegisterCommand,
         cache: CacheStore,
     ) -> AuthTokenSnapshot:
         """使用手机号和密码注册。"""

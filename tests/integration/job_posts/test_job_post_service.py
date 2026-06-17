@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_pilot.application import JobPilot
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.service import JobSourceConfig
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery as JobPostSearchParams
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import JobPost
-from job_pilot.modules.job_posts.schemas import JobPostSearchParams
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.job_skills.schemas import SkillListParams
 from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate

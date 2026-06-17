@@ -8,10 +8,10 @@ from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_collections.enums import JobCollectionStatus
 from job_pilot.modules.job_collections.models import JobCollection
 from job_pilot.modules.job_posts.models import JobPost
+from job_pilot.modules.job_targets.contracts import JobTargetListQuery
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.models import JobTarget
 from job_pilot.modules.job_targets.policies import CURRENT_TARGET_STATUSES
-from job_pilot.modules.job_targets.schemas import JobTargetListParams
 
 
 class JobTargetRepository:
@@ -66,7 +66,7 @@ class JobTargetRepository:
         db: AsyncSession,
         *,
         user_id: int,
-        params: JobTargetListParams,
+        params: JobTargetListQuery,
     ) -> list[JobTarget]:
         """分页读取当前用户目标岗位。"""
 

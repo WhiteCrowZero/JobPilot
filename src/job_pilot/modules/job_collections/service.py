@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import MISSING
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.pagination import trim_page_items
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionCreateCommand,
+    JobCollectionFolderCreateCommand,
+    JobCollectionFolderUpdateCommand,
+    JobCollectionListQuery,
+    JobCollectionUpdateCommand,
+)
 from job_pilot.modules.job_collections.exceptions import (
     DefaultJobCollectionFolderCannotArchiveError,
     DefaultJobCollectionFolderConflictError,
@@ -18,14 +27,9 @@ from job_pilot.modules.job_collections.repository import (
     JobCollectionRepository,
 )
 from job_pilot.modules.job_collections.schemas import (
-    JobCollectionCreate,
-    JobCollectionFolderCreate,
     JobCollectionFolderResponse,
-    JobCollectionFolderUpdate,
-    JobCollectionListParams,
     JobCollectionListResponse,
     JobCollectionResponse,
-    JobCollectionUpdate,
 )
 
 
@@ -45,7 +49,7 @@ class JobCollectionService:
         db: AsyncSession,
         *,
         user_id: int,
-        payload: JobCollectionFolderCreate,
+        payload: JobCollectionFolderCreateCommand,
     ) -> JobCollectionFolderResponse:
         """创建当前用户岗位收藏夹。"""
 
@@ -79,7 +83,7 @@ class JobCollectionService:
         *,
         user_id: int,
         folder_id: int,
-        payload: JobCollectionFolderUpdate,
+        payload: JobCollectionFolderUpdateCommand,
     ) -> JobCollectionFolderResponse:
         """更新当前用户岗位收藏夹。"""
 
@@ -169,7 +173,7 @@ class JobCollectionService:
         db: AsyncSession,
         *,
         user_id: int,
-        payload: JobCollectionCreate,
+        payload: JobCollectionCreateCommand,
     ) -> JobCollectionResponse:
         """新增或恢复当前用户岗位收藏。"""
 
@@ -179,9 +183,11 @@ class JobCollectionService:
             user_id=user_id,
             folder_id=payload.folder_id,
         )
-        create_values = payload.model_dump(exclude={"job_post_id"})
-        create_values["folder_id"] = folder_id
-        update_values = payload.model_dump(exclude={"job_post_id"}, exclude_unset=True)
+        create_values = {
+            "folder_id": folder_id,
+            "note": payload.note,
+        }
+        update_values = self._build_update_values(payload, exclude={"job_post_id"})
         update_values["folder_id"] = folder_id
         collection = await self.collection_repository.upsert_active_collection(
             db,
@@ -197,7 +203,7 @@ class JobCollectionService:
         db: AsyncSession,
         *,
         user_id: int,
-        params: JobCollectionListParams,
+        params: JobCollectionListQuery,
     ) -> JobCollectionListResponse:
         """分页查询当前用户岗位收藏。"""
 
@@ -226,7 +232,7 @@ class JobCollectionService:
         *,
         user_id: int,
         collection_id: int,
-        payload: JobCollectionUpdate,
+        payload: JobCollectionUpdateCommand,
     ) -> JobCollectionResponse:
         """更新当前用户 active 岗位收藏。"""
 
@@ -238,7 +244,7 @@ class JobCollectionService:
         if collection is None:
             raise JobCollectionNotFoundError()
         values = self._build_update_values(payload)
-        if "folder_id" in payload.model_fields_set:
+        if "folder_id" in payload.fields_set:
             values["folder_id"] = await self._resolve_folder_id(
                 db,
                 user_id=user_id,
@@ -312,10 +318,20 @@ class JobCollectionService:
 
     @staticmethod
     def _build_update_values(
-        payload: JobCollectionFolderUpdate | JobCollectionUpdate,
+        payload: (
+            JobCollectionFolderUpdateCommand
+            | JobCollectionUpdateCommand
+            | JobCollectionCreateCommand
+        ),
+        *,
+        exclude: set[str] | None = None,
     ) -> dict[str, object]:
         values: dict[str, object] = {}
-        for field_name in payload.model_fields_set:
+        excluded_fields = exclude or set()
+        field_names = payload.fields_set or _changed_dataclass_fields(payload)
+        for field_name in field_names:
+            if field_name in excluded_fields:
+                continue
             values[field_name] = getattr(payload, field_name)
         return values
 
@@ -356,3 +372,15 @@ def build_job_collection_service() -> JobCollectionService:
         folder_repository=JobCollectionFolderRepository(),
         collection_repository=JobCollectionRepository(),
     )
+
+
+def _changed_dataclass_fields(payload: object) -> frozenset[str]:
+    """推断直接构造 command 时显式改变过的字段。"""
+
+    changed_fields: set[str] = set()
+    for field_name, field_info in payload.__dataclass_fields__.items():  # type: ignore[attr-defined]
+        if field_name == "fields_set" or field_info.default is MISSING:
+            continue
+        if getattr(payload, field_name) != field_info.default:
+            changed_fields.add(field_name)
+    return frozenset(changed_fields)

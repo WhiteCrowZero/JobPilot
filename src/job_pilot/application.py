@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from job_pilot.core.resources import AppResources
-from job_pilot.modules.auth.schemas import EmailRegisterRequest, PhoneRegisterRequest
+from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.service import AuthService, AuthTokenSnapshot, build_auth_service
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.service import (
@@ -12,15 +12,17 @@ from job_pilot.modules.ingestion.service import (
     RawJobIngestionService,
     build_raw_job_ingestion_service,
 )
+from job_pilot.modules.job_collections.contracts import (
+    JobCollectionCreateCommand,
+    JobCollectionFolderCreateCommand,
+    JobCollectionFolderUpdateCommand,
+    JobCollectionListQuery,
+    JobCollectionUpdateCommand,
+)
 from job_pilot.modules.job_collections.schemas import (
-    JobCollectionCreate,
-    JobCollectionFolderCreate,
     JobCollectionFolderResponse,
-    JobCollectionFolderUpdate,
-    JobCollectionListParams,
     JobCollectionListResponse,
     JobCollectionResponse,
-    JobCollectionUpdate,
 )
 from job_pilot.modules.job_collections.service import (
     JobCollectionService,
@@ -28,11 +30,11 @@ from job_pilot.modules.job_collections.service import (
 )
 from job_pilot.modules.job_match.contracts import JobSkillCoverageResult, TargetSkillSummaryResult
 from job_pilot.modules.job_match.service import JobMatchService, build_job_match_service
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.schemas import (
     JobPostDetailResponse,
     JobPostFilterOptionsResponse,
     JobPostListResponse,
-    JobPostSearchParams,
 )
 from job_pilot.modules.job_posts.service import JobPostService, build_job_post_service
 from job_pilot.modules.job_skills.schemas import SkillListParams, SkillListResponse
@@ -43,20 +45,24 @@ from job_pilot.modules.job_skills.service import (
     build_skill_dictionary_service,
 )
 from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate, SkillSyncResult
+from job_pilot.modules.job_targets.contracts import (
+    JobTargetCreateCommand,
+    JobTargetListQuery,
+    JobTargetUpdateCommand,
+)
 from job_pilot.modules.job_targets.schemas import (
-    JobTargetCreate,
-    JobTargetListParams,
     JobTargetListResponse,
     JobTargetResponse,
-    JobTargetUpdate,
 )
 from job_pilot.modules.job_targets.service import JobTargetService, build_job_target_service
+from job_pilot.modules.user_skills.contracts import (
+    UserSkillListQuery,
+    UserSkillUpdateCommand,
+    UserSkillUpsertCommand,
+)
 from job_pilot.modules.user_skills.schemas import (
-    UserSkillListParams,
     UserSkillListResponse,
     UserSkillResponse,
-    UserSkillUpdate,
-    UserSkillUpsert,
 )
 from job_pilot.modules.user_skills.service import UserSkillService, build_user_skill_service
 from job_pilot.uow import UnitOfWorkFactory, build_sqlalchemy_uow_factory
@@ -70,7 +76,7 @@ class JobPilotAuthApi:
     uow_factory: UnitOfWorkFactory
     service: AuthService
 
-    async def register_with_email(self, payload: EmailRegisterRequest) -> AuthTokenSnapshot:
+    async def register_with_email(self, payload: EmailRegisterCommand) -> AuthTokenSnapshot:
         """使用邮箱密码注册用户。"""
 
         async with self.uow_factory() as uow:
@@ -80,7 +86,7 @@ class JobPilotAuthApi:
                 cache=self.resources.require_cache(),
             )
 
-    async def register_with_phone(self, payload: PhoneRegisterRequest) -> AuthTokenSnapshot:
+    async def register_with_phone(self, payload: PhoneRegisterCommand) -> AuthTokenSnapshot:
         """使用手机号密码注册用户。"""
 
         async with self.uow_factory() as uow:
@@ -139,7 +145,7 @@ class JobPilotJobPostApi:
     uow_factory: UnitOfWorkFactory
     service: JobPostService
 
-    async def search(self, params: JobPostSearchParams) -> JobPostListResponse:
+    async def search(self, params: JobPostSearchQuery) -> JobPostListResponse:
         """查询岗位列表。"""
 
         async with self.uow_factory() as uow:
@@ -205,7 +211,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        payload: JobCollectionFolderCreate,
+        payload: JobCollectionFolderCreateCommand,
     ) -> JobCollectionFolderResponse:
         """创建当前用户收藏夹。"""
 
@@ -230,7 +236,7 @@ class JobPilotWorkbenchApi:
         *,
         user_id: int,
         folder_id: int,
-        payload: JobCollectionFolderUpdate,
+        payload: JobCollectionFolderUpdateCommand,
     ) -> JobCollectionFolderResponse:
         """更新当前用户收藏夹。"""
 
@@ -276,7 +282,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        payload: JobCollectionCreate,
+        payload: JobCollectionCreateCommand,
     ) -> JobCollectionResponse:
         """收藏或恢复岗位。"""
 
@@ -291,7 +297,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        params: JobCollectionListParams,
+        params: JobCollectionListQuery,
     ) -> JobCollectionListResponse:
         """查询当前用户岗位收藏。"""
 
@@ -307,7 +313,7 @@ class JobPilotWorkbenchApi:
         *,
         user_id: int,
         collection_id: int,
-        payload: JobCollectionUpdate,
+        payload: JobCollectionUpdateCommand,
     ) -> JobCollectionResponse:
         """更新当前用户岗位收藏。"""
 
@@ -333,7 +339,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        payload: JobTargetCreate,
+        payload: JobTargetCreateCommand,
     ) -> JobTargetResponse:
         """新增或恢复目标岗位。"""
 
@@ -348,7 +354,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        params: JobTargetListParams,
+        params: JobTargetListQuery,
     ) -> JobTargetListResponse:
         """查询当前用户目标岗位。"""
 
@@ -364,7 +370,7 @@ class JobPilotWorkbenchApi:
         *,
         user_id: int,
         target_id: int,
-        payload: JobTargetUpdate,
+        payload: JobTargetUpdateCommand,
     ) -> JobTargetResponse:
         """更新当前用户目标岗位。"""
 
@@ -390,7 +396,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        payload: UserSkillUpsert,
+        payload: UserSkillUpsertCommand,
     ) -> UserSkillResponse:
         """新增、更新或恢复当前用户技能画像。"""
 
@@ -405,7 +411,7 @@ class JobPilotWorkbenchApi:
         self,
         *,
         user_id: int,
-        params: UserSkillListParams,
+        params: UserSkillListQuery,
     ) -> UserSkillListResponse:
         """查询当前用户技能画像。"""
 
@@ -421,7 +427,7 @@ class JobPilotWorkbenchApi:
         *,
         user_id: int,
         skill_id: int,
-        payload: UserSkillUpdate,
+        payload: UserSkillUpdateCommand,
     ) -> UserSkillResponse:
         """更新当前用户技能画像。"""
 

@@ -363,11 +363,11 @@ async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_ver
 
 
 @pytest.mark.asyncio
-async def test_consume_raw_job_message_overwrites_mobility_flags_from_new_description(
+async def test_consume_raw_job_message_keeps_mobility_flags_when_new_description_is_unknown(
     pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
-    """新详情文本没有签证/搬迁信号时，允许清掉旧的 True 标记。"""
+    """新详情文本未提及签证/搬迁时，不用 unknown 覆盖旧明确值。"""
 
     await truncate_job_tables(db_session)
 
@@ -399,9 +399,53 @@ async def test_consume_raw_job_message_overwrites_mobility_flags_from_new_descri
         detail = (await db_session.execute(select(JobPostDetail))).scalar_one()
 
         assert second_result.job_post_id == first_result.job_post_id
+        assert detail.has_visa_sponsorship is True
+        assert detail.has_relocation_support is True
+        assert detail.work_authorization_note == "包含签证支持说明；包含搬迁支持说明"
+    finally:
+        await truncate_job_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_consume_raw_job_message_overwrites_mobility_flags_with_explicit_denial(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """新详情文本明确不支持时，允许 False 覆盖旧 True 标记。"""
+
+    await truncate_job_tables(db_session)
+
+    try:
+        first_message = _build_alibaba_message(
+            message_id="alibaba-mobility-denial:001",
+            external_job_id="ali-mobility-denial-001",
+            source_url="https://jobs.example.com/mobility-denial-001",
+            title="平台后端工程师",
+            description="负责 FastAPI 后端服务建设，包含签证支持和 relocation support。",
+        )
+        second_message = _build_alibaba_message(
+            message_id="alibaba-mobility-denial:002",
+            external_job_id="ali-mobility-denial-001",
+            source_url="https://jobs.example.com/mobility-denial-001",
+            title="平台后端工程师",
+            description="负责 FastAPI 后端服务建设，不提供签证支持，no relocation is provided.",
+        )
+
+        first_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=first_message,
+        )
+        second_result = await pilot.ingestion.consume_raw_job(
+            source_config=_alibaba_source_config(),
+            message=second_message,
+        )
+
+        detail = (await db_session.execute(select(JobPostDetail))).scalar_one()
+
+        assert second_result.job_post_id == first_result.job_post_id
         assert detail.has_visa_sponsorship is False
         assert detail.has_relocation_support is False
-        assert detail.work_authorization_note is None
+        assert detail.work_authorization_note == "包含不支持签证说明；包含不支持搬迁说明"
     finally:
         await truncate_job_tables(db_session)
 
