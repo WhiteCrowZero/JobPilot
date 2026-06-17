@@ -1,6 +1,6 @@
 [project]
 name = "jobpilot"
-version = "0.2.3"
+version = "0.3.1"
 requires-python = ">=3.12"
 description = "JobPilot backend"
 readme = "README.md"
@@ -11,6 +11,7 @@ dependencies = [
     "celery>=5.6.3",
     "email-validator>=2.3.0",
     "fastapi>=0.136.3",
+    "git-filter-repo>=2.47.0",
     "httpx>=0.28.1",
     "loguru>=0.7.3",
     "pwdlib[argon2]>=0.3.0",

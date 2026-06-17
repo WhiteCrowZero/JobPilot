@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 class Question(TimestampMixin, Base):
     """公共题目表。
 
-    支持开放面试题、单选、多选、判断、短答，并预留 coding 类型。
+    支持开放面试题、单选、多选、判断
     题目去重只基于题干，不包含答案或选项。
     """
 
@@ -59,7 +59,7 @@ class Question(TimestampMixin, Base):
             "review_status",
             "id",
         ),
-        {"comment": "公共题目表，支持面试开放题、选择题、判断题和后续 coding 题。"},
+        {"comment": "公共题目表，支持面试开放题、选择题（单选和多选）、判断题。"},
     )
 
     id: Mapped[int] = mapped_column(
@@ -92,7 +92,7 @@ class Question(TimestampMixin, Base):
         nullable=False,
         default=QuestionType.INTERVIEW_OPEN,
         server_default=QuestionType.INTERVIEW_OPEN.value,
-        comment="题目类型：开放面试题、单选、多选、判断、短答、coding。",
+        comment="题目类型：开放面试题、单选、多选、判断。",
     )
 
     difficulty: Mapped[QuestionDifficulty] = mapped_column(
@@ -116,7 +116,7 @@ class Question(TimestampMixin, Base):
         nullable=False,
         default=ContentSourceType.OFFICIAL,
         server_default=ContentSourceType.OFFICIAL.value,
-        comment="题目来源：ai、official、user_supplement。",
+        comment="题目来源：official、user_supplement。",
     )
 
     source_note: Mapped[str | None] = mapped_column(
@@ -130,14 +130,14 @@ class Question(TimestampMixin, Base):
         nullable=False,
         default=QuestionReviewStatus.APPROVED,
         server_default=QuestionReviewStatus.APPROVED.value,
-        comment="审核状态。AI 或用户补充内容后续可先进入 draft。",
+        comment="审核状态。用户补充内容后续可先进入 draft。",
     )
 
     created_by_user_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
-        comment="用户补充题目的创建者 ID。官方或 AI 题目可为空。",
+        comment="用户补充题目的创建者 ID。官方题目可为空。",
     )
 
     created_by_user: Mapped[User | None] = relationship(
@@ -244,15 +244,19 @@ class QuestionAnswer(TimestampMixin, Base):
 
     __tablename__ = "question_answers"
     __table_args__ = (
-        CheckConstraint("sort_order >= 0", name="ck_question_answers_sort_order_non_negative"),
         Index(
-            "uq_question_answers_preferred_active",
+            "uq_question_answers_official",
             "question_id",
             unique=True,
-            postgresql_where=text("is_preferred = true AND status = 'active'"),
+            postgresql_where=text("source_type = 'official'"),
         ),
         Index(
-            "ix_question_answers_question_status_sort", "question_id", "status", "sort_order", "id"
+            "ix_question_answers_question_status_source",
+            "question_id",
+            "status",
+            "source_type",
+            text("created_at DESC"),
+            "id",
         ),
         {"comment": "题目答案表，支持同一题多个答案版本。"},
     )
@@ -274,15 +278,7 @@ class QuestionAnswer(TimestampMixin, Base):
     content: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-        comment="答案内容，可为面试口述版、详细版或用户补充版。",
-    )
-
-    is_preferred: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default=false(),
-        comment="是否为该题当前推荐展示答案。active 状态下同一题最多一个。",
+        comment="答案内容。",
     )
 
     source_type: Mapped[ContentSourceType] = mapped_column(
@@ -290,13 +286,7 @@ class QuestionAnswer(TimestampMixin, Base):
         nullable=False,
         default=ContentSourceType.OFFICIAL,
         server_default=ContentSourceType.OFFICIAL.value,
-        comment="答案来源：ai、official、user_supplement。",
-    )
-
-    source_note: Mapped[str | None] = mapped_column(
-        String(300),
-        nullable=True,
-        comment="答案来源补充说明。",
+        comment="答案来源：official、user_supplement。官方答案同一题只允许一个。",
     )
 
     status: Mapped[QuestionAnswerStatus] = mapped_column(
@@ -305,14 +295,6 @@ class QuestionAnswer(TimestampMixin, Base):
         default=QuestionAnswerStatus.ACTIVE,
         server_default=QuestionAnswerStatus.ACTIVE.value,
         comment="答案状态。",
-    )
-
-    sort_order: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=99,
-        server_default="99",
-        comment="答案展示顺序。",
     )
 
     created_by_user_id: Mapped[int | None] = mapped_column(

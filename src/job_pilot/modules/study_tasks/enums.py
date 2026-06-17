@@ -18,7 +18,6 @@ class StudyTaskType(StrEnum):
     SKILL_LEARNING = "skill_learning"
     QUESTION_PRACTICE = "question_practice"
     REVIEW = "review"
-    PROJECT_PRACTICE = "project_practice"
 
 
 class StudyTaskSource(StrEnum):
@@ -26,8 +25,8 @@ class StudyTaskSource(StrEnum):
 
     MATCH_MISSING_SKILL = "match_missing_skill"
     MATCH_WEAK_SKILL = "match_weak_skill"
-    TARGET_SKILL_SUMMARY = "target_skill_summary"
-    MANUAL = "manual"
+    SYSTEM_BUILD_IN = "system_build_in"
+    USER_DEFINED = "user_defined"
 
 
 class StudyTaskQuestionStatus(StrEnum):
@@ -42,6 +41,5 @@ class StudyTaskQuestionResult(StrEnum):
     """学习任务内题目的练习结果。"""
 
     CORRECT = "correct"
-    PARTIAL = "partial"
     INCORRECT = "incorrect"
     SKIPPED = "skipped"

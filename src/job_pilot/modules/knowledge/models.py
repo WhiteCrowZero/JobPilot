@@ -17,7 +17,6 @@ from sqlalchemy.sql import text
 from job_pilot.core.enums import enum_column
 from job_pilot.db.base import Base, TimestampMixin
 from job_pilot.modules.knowledge.enums import (
-    ContentSourceType,
     KnowledgePointLevel,
     KnowledgePointStatus,
 )
@@ -82,7 +81,7 @@ class KnowledgePoint(TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
-        comment="知识点简短说明。MVP 不保存大段资料正文。",
+        comment="知识点简短说明。",
     )
 
     level: Mapped[KnowledgePointLevel] = mapped_column(
@@ -117,14 +116,6 @@ class KnowledgePoint(TimestampMixin, Base):
         comment="知识点状态。",
     )
 
-    source_type: Mapped[ContentSourceType] = mapped_column(
-        enum_column(ContentSourceType, name="content_source_type", length=30),
-        nullable=False,
-        default=ContentSourceType.OFFICIAL,
-        server_default=ContentSourceType.OFFICIAL.value,
-        comment="内容来源：ai、official、user_supplement。",
-    )
-
     source_note: Mapped[str | None] = mapped_column(
         String(300),
         nullable=True,
@@ -135,7 +126,7 @@ class KnowledgePoint(TimestampMixin, Base):
         BigInteger,
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
-        comment="用户补充内容的创建者 ID，官方或 AI 内容可为空。",
+        comment="用户补充内容的创建者 ID，官方可为空。",
     )
 
     skill: Mapped[Skill] = relationship(

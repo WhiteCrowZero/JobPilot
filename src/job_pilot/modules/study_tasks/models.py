@@ -97,8 +97,8 @@ class StudyTask(UserOwnedMixin, TimestampMixin, Base):
     source: Mapped[StudyTaskSource] = mapped_column(
         enum_column(StudyTaskSource, name="study_task_source", length=40),
         nullable=False,
-        default=StudyTaskSource.MANUAL,
-        server_default=StudyTaskSource.MANUAL.value,
+        default=StudyTaskSource.SYSTEM_BUILD_IN,
+        server_default=StudyTaskSource.SYSTEM_BUILD_IN.value,
         comment="任务来源。",
     )
 
@@ -268,7 +268,6 @@ class StudyTaskProgress(TimestampMixin, Base):
         ),
         CheckConstraint(
             "correct_count >= 0 "
-            "AND partial_count >= 0 "
             "AND incorrect_count >= 0 "
             "AND skipped_count >= 0",
             name="ck_study_task_progress_result_counts_non_negative",
@@ -313,9 +312,6 @@ class StudyTaskProgress(TimestampMixin, Base):
     )
     correct_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0", comment="累计正确次数。"
-    )
-    partial_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0", comment="累计部分正确次数。"
     )
     incorrect_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0", comment="累计错误次数。"
@@ -506,10 +502,7 @@ class StudyTaskQuestionAttempt(TimestampMixin, Base):
         JSONB, nullable=True, comment="选择题本次选择的 option_id 列表。"
     )
     answer_text: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="开放题、短答题或 coding 题的本次作答内容。"
-    )
-    feedback: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="本次作答反馈。MVP 可为空，后续可由 AI 生成。"
+        Text, nullable=True, comment="简答题的本次作答内容。"
     )
     duration_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True, comment="本次作答耗时，秒。"
