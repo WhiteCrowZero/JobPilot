@@ -65,3 +65,13 @@ class EducationLevel(StrEnum):
     MASTER = "master"
     DOCTOR = "doctor"
     UNKNOWN = "unknown"
+
+
+class SalaryPeriod(StrEnum):
+    """薪资周期。"""
+
+    HOUR = "hour"
+    DAY = "day"
+    MONTH = "month"
+    YEAR = "year"
+    UNKNOWN = "unknown"

@@ -14,19 +14,21 @@ JobPilot 是一个基于 FastAPI
 
 ## 2. 开发规范
 
-1. 遵循 MVP 优先的迭代方式，除非用户明确要求（严格以`[system refactor]`开头），否则不要进行整体重写，直接明确拒绝。
+1. 遵循 MVP 优先的迭代方式，同时所有的大规模修改都不需要考虑兼容，直接全部改掉，因为目前还是开走迭代时期。
 2. 以后每做一个模块，都要同时产出 3 个东西：
     ```text
     1. 代码
     2. 测试
-    3. 学习文档，涉及的八股问题（在`docs/八股文档`下）
+    3. 学习文档，涉及的八股问题（在`docs/ai_report`下，中文命名）
     ```
 3. 每个函数和类属性，都要写类型注释，一定是具体的类型，尽量不要是 `Any`。
 4. 每个.py文件的开头加上 `from __future__ import annotations`。
 5. service 的异常尽量抛到 `src/job_pilot/core/exceptions.py` 定义的异常中，不要到处乱写 HTTPException，往统一异常靠。
 6. 每个函数和类尽量写一个总注释，使用中文注释，不要太长，突出重点；特别简单的一些函数或者类（非常简短或者功能很小的）可以不加。
 7. 本地不要写 `localhost` ，统一改成 `127.0.0.1` ，避免 Windows + Docker 出现特殊问题。
-8. 读取文件时统一采取 `utf8` 的格式，避免乱码。
+8. 读取文件时统一采取 `utf8` 的格式，避免乱码。日志输出全部采用英文，注释全部采用中文。
+9. 所有 service 调用 repository 都写成“显式注入 + factory”，参考格式
+   `def build_xxx_service() -> XxxService: return XxxService(repository=XxxRepository())`。
 
 ---
 
@@ -56,7 +58,8 @@ uv pip
 推荐验证命令：
 
 ```bash
-uv run ruff check .
+uv run ruff format
+uv run ruff check . --fix
 uv run pytest
 uv run pyright
 ```
@@ -82,22 +85,20 @@ JobPilot/
 |-- .env.example
 |-- .env.test
 |-- .gitignore
-|-- .dockerignore
 |-- .github
 |-- alembic.ini
 |-- alembic/
-|   |-- env.py
-|   `-- versions/
 |-- deploy/
 |   |-- .env
 |   |-- Dockerfile
 |   `-- docker-compose.yml
 |-- docs/
-|   `-- 八股文档/
 |-- logs/
 |-- src/
 |   `-- job_pilot/
 |       |-- main.py
+|       |-- uow.py
+|       |-- application.py
 |       |-- api/
 |       |   |-- deps.py
 |       |   |-- health.py
@@ -134,7 +135,7 @@ JobPilot/
     |-- conftest.py
     |-- api/
     |-- unit/
-    `-- smoke/
+    `-- integration/
 ```
 
 ## 6. 项目最终简历形态

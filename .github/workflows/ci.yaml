@@ -29,7 +29,7 @@ jobs:
         run: uv sync --frozen --dev
 
       - name: Lint
-        run: uv run ruff check .
+        run: uv run ruff format --check . && uv run ruff check .
 
       - name: Type check
         run: uv run pyright

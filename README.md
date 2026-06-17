@@ -40,7 +40,7 @@ src/job_pilot/modules/
   auth/             # 注册、登录、JWT access/refresh token、密码凭证
   users/            # 用户资料、用户状态、当前用户读取
   job_posts/        # 岗位主数据、搜索筛选、详情查询、去重
-  job_skills/       # 岗位技能标签、规则提取、热门技能统计
+  job_skills/       # 技能字典、别名归一、岗位技能关系、按技能筛选
   job_collections/  # 用户收藏岗位
   job_targets/      # 用户目标岗位，表示“我要围绕这个岗位准备”
   user_skills/      # 用户技能画像和掌握程度
@@ -56,11 +56,13 @@ MVP 阶段只实现核心闭环，不强行完成所有模块。模块目录先�
 
 **当前实现状态**
 
-| 阶段 | 状态   | 说明                                                           | 学习文档                        |
-|----|------|--------------------------------------------------------------|-----------------------------|
-| 0  | 已完成  | 用户注册、登录、JWT access/refresh token、当前用户、logout                 | `docs/八股文档/阶段0-用户注册与认证.md`  |
-| 1  | 已完成  | 岗位 raw 摄入、规范化入库、fingerprint 去重、列表/详情/筛选、分页、filter-options 缓存 | `docs/八股文档/阶段1-岗位主数据与搜索.md` |
-| 2  | 下一阶段 | 技能字典、技能别名、岗位技能提取、热门技能统计                                      | 待生成                         |
+| 阶段 | 状态   | 说明                                                                                      | 学习文档                                    |
+|----|------|-----------------------------------------------------------------------------------------|-----------------------------------------|
+| 0  | 已完成  | 用户注册、登录、JWT access/refresh token、当前用户、logout                                            | `docs/八股文档/阶段0-用户注册与认证.md`              |
+| 1  | 已完成  | 岗位 raw 摄入、规范化入库、fingerprint 去重、列表/详情/筛选、分页、filter-options 缓存                            | `docs/八股文档/阶段1-岗位主数据与搜索.md`             |
+| 2  | 基础完成 | 技能字典、技能别名、岗位技能关系、按技能筛选、filter-options 技能候选；生产级 worker 编排后续补齐                            | `docs/ai_report/skill_phase2_review.md` |
+| 3  | 已完成  | 用户收藏岗位、收藏夹、目标岗位、用户技能画像、用户数据隔离、工作台索引优化                                                   | `docs/ai_report/用户工作台*.md`              |
+| 4  | 已完成  | 目标岗位技能覆盖分析：基于 job_post_skills 与 user_skills 做 matched / weak / missing 集合计算，并统计目标岗位高频技能 | `docs/ai_report/阶段4-目标岗位技能覆盖分析收口评估.md`  |
 
 ## 4. MVP 范围
 
@@ -75,13 +77,13 @@ MVP 保留：
 2. **岗位情报池**：岗位列表、详情、关键词/城市/薪资/技能筛选、fingerprint 去重。
     - job_posts
     - ingestion
-3. **岗位技能**：规则词典提取技能标签，支持按技能筛选岗位。
+3. **岗位技能**：维护标准技能字典和别名，支持岗位技能关系同步、岗位详情展示和按技能筛选。
     - job_skills
 4. **用户工作台**：收藏岗位、设为目标岗位、维护个人技能画像。
     - job_collections
     - job_targets
     - user_skills
-5. **技能差距分析**：输出 `matched / missing / weak` 技能列表。
+5. **技能差距分析**：基于结构化岗位技能和用户技能画像输出 `matched / weak / missing`，并统计目标岗位高频技能。
     - job_match
 6. **学习准备闭环**：根据缺失技能创建学习任务，推荐八股题，记录掌握状态。
     - study_tasks
@@ -98,20 +100,20 @@ MVP 暂不做：
 
 后续新增表时，优先按下面的归属放到对应模块，避免跨模块边界混乱：
 
-| 模块                | 核心表                                                                 | 职责边界                                    |
-|-------------------|---------------------------------------------------------------------|-----------------------------------------|
-| `auth`            | `auth_identities`、`auth_password_credentials`                       | 登录身份、密码哈希、JWT token 签发与校验               |
-| `users`           | `users`、`user_profiles`                                             | 用户主体、用户状态、超级用户标记、公开资料                   |
-| `job_posts`       | `job_posts`、`job_sources`、`job_details`                             | 岗位主数据、来源链接、fingerprint 去重、搜索筛选          |
-| `job_skills`      | `skills`、`skill_aliases`、`job_post_skills`                          | 技能字典、技能别名、岗位技能关系、热门技能统计                 |
-| `ingestion`       | `ingestion_tasks`、`raw_job_records`、`ingestion_errors`              | 外部岗位数据摄入、清洗、错误记录、幂等入库                   |
-| `job_collections` | `job_collections`                                                   | 用户收藏岗位，必须按 `user_id` 隔离                 |
-| `job_targets`     | `job_targets`                                                       | 用户目标岗位、准备状态、优先级                         |
-| `user_skills`     | `user_skills`                                                       | 用户技能画像和掌握程度                             |
-| `job_match`       | 可先不建表                                                               | 读取岗位技能和用户技能，输出 matched / missing / weak |
-| `study_tasks`     | `study_tasks`                                                       | 围绕目标岗位和缺失技能生成学习任务                       |
-| `knowledge`       | `knowledge_points`、`learning_resources`                             | 公共知识点、学习资料、技能分类                         |
-| `questions`       | `interview_questions`、`question_mastery_records`、`practice_records` | 公共题库、用户掌握状态、练习记录                        |
+| 模块                | 核心表                                                                 | 职责边界                                         |
+|-------------------|---------------------------------------------------------------------|----------------------------------------------|
+| `auth`            | `auth_identities`、`auth_password_credentials`                       | 登录身份、密码哈希、JWT token 签发与校验                    |
+| `users`           | `users`、`user_profiles`                                             | 用户主体、用户状态、超级用户标记、公开资料                        |
+| `job_posts`       | `job_posts`、`job_sources`、`job_post_details`                        | 岗位主数据、来源链接、fingerprint 去重、搜索筛选               |
+| `job_skills`      | `skills`、`skill_aliases`、`job_post_skills`                          | 技能字典、技能别名、岗位技能关系、岗位技能筛选                      |
+| `ingestion`       | `ingestion_tasks`、`raw_job_records`、`ingestion_errors`              | 外部岗位数据摄入、清洗、错误记录、幂等入库                        |
+| `job_collections` | `job_collection_folders`、`job_collections`                          | 用户收藏夹、默认收藏夹、岗位收藏，必须按 `user_id` 隔离            |
+| `job_targets`     | `job_targets`                                                       | 用户目标岗位、准备状态、优先级、主目标、收藏来源                     |
+| `user_skills`     | `user_skills`                                                       | 用户技能画像和掌握程度                                  |
+| `job_match`       | 当前不建表                                                               | 读取岗位技能、目标岗位和用户技能，输出 skill coverage 与目标岗位技能频率 |
+| `study_tasks`     | `study_tasks`                                                       | 围绕目标岗位和缺失技能生成学习任务                            |
+| `knowledge`       | `knowledge_points`、`learning_resources`                             | 公共知识点、学习资料、技能分类                              |
+| `questions`       | `interview_questions`、`question_mastery_records`、`practice_records` | 公共题库、用户掌握状态、练习记录                             |
 
 `system` 不作为核心业务表归属模块。健康检查、缓存、日志、后台任务等横切能力优先放在 `api/`、`core/`、`workers/` 中。
 
@@ -124,6 +126,8 @@ MVP 暂不做：
 - 岗位筛选：动态 SQL、联合索引、分页、慢查询。
 - 技能标签：一对多、多对多、JSON 字段与关系表取舍。
 - 用户数据隔离：越权访问、user_id 查询条件、权限依赖。
+- 用户工作台：软删除、归档恢复、默认收藏夹、主目标唯一、状态时间字段。
+- 技能覆盖分析：集合交集、matched/weak/missing、无数据不打分、越权访问防护。
 - 缓存：Redis、Cache Aside、缓存穿透/击穿/雪崩。
 - 异步摄入：Celery、消息队列、任务状态、失败重试、重复消费。
 - 测试部署：pytest、测试数据库隔离、Alembic、Docker Compose。
@@ -244,34 +248,40 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 4. 涉及八股问题
 ```
 
-| 阶段 | 状态   | 目标                                                              | 必须交付                                                                                                              |
-|----|------|-----------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| 0  | 已完成  | 认证闭环                                                            | `users/user_profiles/auth_identities/auth_password_credentials`、register/login/me/refresh、access/refresh token 轮换 |
-| 1  | 已完成  | 岗位主数据                                                           | `job_posts/job_sources/job_details`、raw 摄入、fingerprint 唯一约束、列表/详情/关键词/城市/薪资筛选、分页、索引、filter-options 缓存             |
-| 2  | 技能标签 | `skills/skill_aliases/job_post_skills`、规则词典提取、按技能筛选、热门技能统计、去重测试 |
-| 3  | 未开始  | 用户工作台                                                           | 收藏、取消收藏、目标岗位、目标状态、用户技能画像、`user_id + job_id` 唯一约束、越权测试                                                             |
-| 4  | 未开始  | 技能差距分析                                                          | `matched/missing/weak` service、目标岗位匹配接口、纯 service 单元测试、边界用例                                                       |
-| 5  | 未开始  | 学习闭环                                                            | 学习任务生成、题库推荐、题目掌握状态、公共题库和用户状态拆表、任务状态流转测试                                                                           |
-| 6  | 未开始  | Cache Aside                                                     | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                  |
-| 7  | 未开始  | Celery 摄入                                                       | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                     |
-| 8  | 未开始  | 工程化收尾                                                           | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                           |
+| 阶段 | 状态   | 目标          | 必须交付                                                                                                                                   |
+|----|------|-------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| 0  | 已完成  | 认证闭环        | `users/user_profiles/auth_identities/auth_password_credentials`、register/login/me/refresh、access/refresh token 轮换                      |
+| 1  | 已完成  | 岗位主数据       | `job_posts/job_sources/job_post_details`、raw 摄入、fingerprint 唯一约束、列表/详情/关键词/城市/薪资筛选、分页、索引、filter-options 缓存                             |
+| 2  | 基础完成 | 技能标签        | `skills/skill_aliases/job_post_skills`、别名归一、按技能筛选、岗位详情技能展示、filter-options 技能候选、同步 service 测试                                           |
+| 3  | 已完成  | 用户工作台       | 用户技能画像、岗位收藏夹、默认收藏夹切换、收藏/取消/恢复、目标岗位、目标状态、主目标唯一、收藏来源校验、用户数据隔离、工作台索引优化                                                                    |
+| 4  | 已完成  | 目标岗位技能覆盖分析  | 基于 `job_post_skills` 与 `user_skills` 做集合交集分析，输出 `matched / weak / missing`，并统计 active/paused 目标岗位高频技能；不分析 description，不引入 AI/embedding |
+| 5  | 下一阶段 | 学习闭环        | 基于阶段 4 输出的 `weak_skills / missing_skills` 创建学习任务，维护任务状态，后续再接入知识点和八股题推荐                                                                 |
+| 6  | 未开始  | Cache Aside | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                                       |
+| 7  | 未开始  | Celery 摄入   | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                                          |
+| 8  | 未开始  | 工程化收尾       | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                                                |
 
-阶段 1 先提供轻量 seed 导入，保证系统早期就有岗位数据可查。阶段 7 再把摄入流程升级为 Celery 异步任务和幂等处理。
+阶段 1 先提供轻量 seed 导入，保证系统早期就有岗位数据可查。阶段 2 已完成技能字典与岗位技能关系的基础服务侧能力；阶段 3
+已完成用户工作台闭环，当前用户可维护技能画像、收藏岗位、切换默认收藏夹、设置目标岗位并维护目标状态。阶段 4
+已完成目标岗位技能覆盖分析，当前只基于 `job_post_skills` 与 `user_skills` 做集合计算，不分析
+`job_post_details.description`，不引入 AI/embedding。当前
+`scripts/seed_jobs.py` 只负责岗位主数据导入，不在脚本内同步技能。后续会在独立 worker /
+编排层中完成“岗位主数据摄入成功后，开启第二个事务同步岗位技能”的生产流程。下一阶段开始实现学习任务闭环，阶段 7 再把摄入流程升级为
+Celery 异步任务和幂等处理。
 
 ## 9. API 路线
 
 接口设计按业务闭环推进，优先保证用户侧核心流程可用：
 
-| 阶段 | API                                                                                                                                                                                     | 说明                               |
-|----|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
-| 0  | `POST /auth/register/email`、`POST /auth/register/phone`、`POST /auth/login/email`、`POST /auth/login/phone`、`POST /auth/refresh`、`POST /auth/logout`、`GET /users/me`                      | 完成邮箱/手机号登录态、refresh 轮换、退出和当前用户读取 |
-| 1  | `GET /jobs`、`GET /jobs/{job_id}` 、`GET /jobs/filter-options`                                                                                                                            | 岗位列表、详情、关键词/城市/薪资筛选              |
-| 2  | `GET /skills`、`GET /skills/hot`、`GET /jobs?skill=python`                                                                                                                                | 技能字典、热门技能、按技能筛选岗位                |
-| 3  | `POST /job-collections`、`DELETE /job-collections/{job_id}`、`GET /job-collections`、`POST /job-targets`、`GET /job-targets`、`PATCH /job-targets/{target_id}`、`PUT /user-skills/{skill_id}` | 用户收藏、目标岗位、技能画像                   |
-| 4  | `GET /job-targets/{target_id}/match`                                                                                                                                                    | 输出目标岗位与用户技能画像的差距                 |
-| 5  | `POST /study-tasks/generate`、`GET /study-tasks`、`PATCH /study-tasks/{task_id}`、`GET /questions/recommended`、`PUT /questions/{question_id}/mastery`                                      | 生成学习任务、推荐题目、记录掌握状态               |
-| 6  | 无需新增业务 API                                                                                                                                                                              | 在岗位详情、热门技能、任务进度等高频读接口接入缓存        |
-| 7  | `POST /ingestion/tasks`、`GET /ingestion/tasks/{task_id}`、`GET /ingestion/tasks/{task_id}/errors`                                                                                        | 创建摄入任务、查询状态、查看错误记录               |
+| 阶段 | API                                                                                                                                                                | 说明                                                  |
+|----|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| 0  | `POST /auth/register/email`、`POST /auth/register/phone`、`POST /auth/login/email`、`POST /auth/login/phone`、`POST /auth/refresh`、`POST /auth/logout`、`GET /users/me` | 完成邮箱/手机号登录态、refresh 轮换、退出和当前用户读取                    |
+| 1  | `GET /jobs`、`GET /jobs/{job_id}` 、`GET /jobs/filter-options`                                                                                                       | 岗位列表、详情、关键词/城市/薪资筛选                                 |
+| 2  | `GET /skills`、`GET /jobs?skill_ids=1`、`GET /jobs/filter-options`                                                                                                   | 技能字典、岗位详情技能展示、filter-options 技能候选、按技能筛选岗位           |
+| 3  | `/user/skills`、`/jobs/collections/folders`、`/jobs/collections/folders/{folder_id}/default`、`/jobs/collections`、`/jobs/targets`                                     | 用户技能画像、收藏夹、岗位收藏、目标岗位                                |
+| 4  | `GET /jobs/match/jobs/{job_post_id}/coverage`、`GET /jobs/match/targets/{target_id}/coverage`、`GET /jobs/match/targets/skills`                                      | 单岗位技能覆盖、目标岗位技能覆盖、目标岗位技能统计；只基于结构化技能集合计算              |
+| 5  | `POST /study-tasks`、`GET /study-tasks`、`PATCH /study-tasks/{task_id}`、`POST /study-tasks/generate-from-target`                                                     | 创建学习任务、查询任务、更新任务状态、从目标岗位缺口生成任务。题库推荐后置到 questions 阶段 |
+| 6  | 无需新增业务 API                                                                                                                                                         | 在岗位详情、热门技能、任务进度等高频读接口接入缓存                           |
+| 7  | `POST /ingestion/tasks`、`GET /ingestion/tasks/{task_id}`、`GET /ingestion/tasks/{task_id}/errors`                                                                   | 创建摄入任务、查询状态、查看错误记录                                  |
 
 ## 10. 阶段完成标准
 

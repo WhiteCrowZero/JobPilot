@@ -1,27 +1,20 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from job_pilot.core.pagination import PageParams, PageResult
+from job_pilot.modules.job_posts.contracts import JobPostSort
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
     ExperienceLevel,
     JobPostStatus,
+    SalaryPeriod,
     WorkplaceType,
 )
-
-JobPostSort = Literal[
-    "published_at_desc",
-    "published_at_asc",
-    "created_at_desc",
-    "created_at_asc",
-    "salary_max_desc",
-    "salary_min_asc",
-]
+from job_pilot.modules.job_skills.schemas import SkillLabelResponse
 
 
 class JobPostSearchParams(PageParams):
@@ -40,6 +33,7 @@ class JobPostSearchParams(PageParams):
     salary_max: int | None = Field(default=None, ge=0)
     salary_currency: str | None = Field(default=None, max_length=10)
     locations: list[str] | None = None
+    skill_ids: list[int] | None = None
     is_remote: bool | None = None
     published_from: datetime | None = None
     published_to: datetime | None = None
@@ -78,6 +72,7 @@ class JobPostListItem(BaseModel):
     salary_min: int | None
     salary_max: int | None
     salary_currency: str | None
+    salary_period: SalaryPeriod
     published_at: datetime | None
     created_at: datetime
     status: JobPostStatus
@@ -96,6 +91,7 @@ class JobPostDetailResponse(JobPostListItem):
     has_visa_sponsorship: bool | None
     has_relocation_support: bool | None
     work_authorization_note: str | None
+    skills: list[SkillLabelResponse] = Field(default_factory=list)
 
 
 class JobPostFilterOptionsResponse(BaseModel):
@@ -109,3 +105,4 @@ class JobPostFilterOptionsResponse(BaseModel):
     education_levels: list[EducationLevel] = Field(default_factory=list)
     salary_currencies: list[str] = Field(default_factory=list)
     locations: list[str] = Field(default_factory=list)
+    skills: list[SkillLabelResponse] = Field(default_factory=list)

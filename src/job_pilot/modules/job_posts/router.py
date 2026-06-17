@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from job_pilot.api.deps import CurrentCacheStoreDep, DbSessionDep
+from job_pilot.api.deps import JobPilotDep
 from job_pilot.core.pagination import PageParams
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery, JobPostSort
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -18,18 +19,14 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostDetailResponse,
     JobPostFilterOptionsResponse,
     JobPostListResponse,
-    JobPostSearchParams,
-    JobPostSort,
 )
-from job_pilot.modules.job_posts.service import JobPostService
 
 router = APIRouter()
-service = JobPostService()
 
 
-@router.get("", response_model=JobPostListResponse)
+@router.get("/search", response_model=JobPostListResponse)
 async def search_job_posts(
-    session: DbSessionDep,
+    pilot: JobPilotDep,
     pagination: Annotated[PageParams, Depends()],
     keyword: Annotated[str | None, Query(max_length=100)] = None,
     source_platforms: Annotated[list[str] | None, Query()] = None,
@@ -44,6 +41,7 @@ async def search_job_posts(
     salary_max: Annotated[int | None, Query(ge=0)] = None,
     salary_currency: Annotated[str | None, Query(max_length=10)] = None,
     locations: Annotated[list[str] | None, Query()] = None,
+    skill_ids: Annotated[list[int] | None, Query()] = None,
     is_remote: bool | None = None,
     published_from: datetime | None = None,
     published_to: datetime | None = None,
@@ -54,7 +52,16 @@ async def search_job_posts(
 ) -> JobPostListResponse:
     """查询岗位列表，支持关键词、枚举、薪资、地点文本和时间范围筛选。"""
 
-    params = JobPostSearchParams(
+    if experience_min_years is not None and experience_max_years is not None:
+        if experience_min_years > experience_max_years:
+            raise HTTPException(
+                status_code=422,
+                detail="experience_min_years must be <= experience_max_years",
+            )
+    if salary_min is not None and salary_max is not None and salary_min > salary_max:
+        raise HTTPException(status_code=422, detail="salary_min must be <= salary_max")
+
+    params = JobPostSearchQuery(
         keyword=keyword,
         source_platforms=source_platforms,
         statuses=statuses,
@@ -68,6 +75,7 @@ async def search_job_posts(
         salary_max=salary_max,
         salary_currency=salary_currency,
         locations=locations,
+        skill_ids=skill_ids,
         is_remote=is_remote,
         published_from=published_from,
         published_to=published_to,
@@ -78,21 +86,20 @@ async def search_job_posts(
         page_size=pagination.page_size,
         include_closed=include_closed,
     )
-    return await service.search_job_posts(session, params)
+    return await pilot.job_posts.search(params)
 
 
 @router.get("/filter-options", response_model=JobPostFilterOptionsResponse)
 async def read_job_post_filter_options(
-    session: DbSessionDep,
-    cache: CurrentCacheStoreDep,
+    pilot: JobPilotDep,
 ) -> JobPostFilterOptionsResponse:
     """读取岗位筛选项候选值。"""
 
-    return await service.get_filter_options(session, cache)
+    return await pilot.job_posts.get_filter_options()
 
 
 @router.get("/{job_post_id}", response_model=JobPostDetailResponse)
-async def read_job_post_detail(job_post_id: int, session: DbSessionDep) -> JobPostDetailResponse:
+async def read_job_post_detail(job_post_id: int, pilot: JobPilotDep) -> JobPostDetailResponse:
     """读取岗位详情。"""
 
-    return await service.get_job_post_detail(session, job_post_id)
+    return await pilot.job_posts.get_detail(job_post_id=job_post_id)

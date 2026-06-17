@@ -42,7 +42,7 @@ class JobDraft:
     raw_flexibility: str | None
 
     raw_salary: str | None
-    raw_skills: str | None
+    raw_skills: list[str]
     published_at_raw: Any
 
 
@@ -91,7 +91,8 @@ class AlibabaJobAdapter(BaseJobAdapter):
                 "薪资",
                 "薪酬",
             ),
-            raw_skills=_first_text(raw_payload, "skills"),
+            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
+            raw_skills=[],
             published_at_raw=raw_payload.get("publish_time") or raw_payload.get("published_at"),
         )
 
@@ -130,7 +131,8 @@ class TencentJobAdapter(BaseJobAdapter):
                 "薪资",
                 "薪酬",
             ),
-            raw_skills=_first_text(raw_payload, "skills"),
+            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
+            raw_skills=[],
             published_at_raw=raw_payload.get("publish_time") or raw_payload.get("published_at"),
         )
 
@@ -169,7 +171,8 @@ class JaabzJobAdapter(BaseJobAdapter):
                 "薪资",
                 "薪酬",
             ),
-            raw_skills=_first_text(raw_payload, "skills"),
+            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
+            raw_skills=[],
             published_at_raw=raw_payload.get("release_time") or raw_payload.get("publish_time"),
         )
 
@@ -192,6 +195,39 @@ def _first_text(raw_payload: dict[str, Any], *keys: str) -> str | None:
         if text_value is not None:
             return text_value
     return None
+
+
+def _skill_texts_from_value(value: object | None) -> list[str]:
+    """解析 adapter 已明确映射的技能字段值，供后续真实来源字段接入复用。
+
+    注意：这里不负责决定“从哪些字段取技能”。字段来源必须由具体 adapter
+    根据爬虫结构显式指定，避免把 tags、keywords 等含义不稳定的字段误当技能。
+    """
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text_value = _clean_text(value)
+        return [text_value] if text_value is not None else []
+    if isinstance(value, dict):
+        return _skill_texts_from_mapping(value)
+    if isinstance(value, list | tuple | set):
+        skill_texts: list[str] = []
+        for item in value:
+            skill_texts.extend(_skill_texts_from_value(item))
+        return skill_texts
+
+    text_value = _clean_text(value)
+    return [text_value] if text_value is not None else []
+
+
+def _skill_texts_from_mapping(value: dict[object, object]) -> list[str]:
+    for key in ("name", "label", "text", "skill", "title", "value"):
+        item = value.get(key)
+        text_value = _clean_text(item)
+        if text_value is not None:
+            return [text_value]
+    return []
 
 
 def _clean_text(value: object | None) -> str | None:

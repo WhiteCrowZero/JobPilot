@@ -77,6 +77,7 @@ def normalize_job_draft(draft: JobDraft) -> NormalizedJob:
         salary_min=salary.salary_min,
         salary_max=salary.salary_max,
         salary_currency=salary.salary_currency,
+        salary_period=salary.salary_period,
         published_at=published_at,
         has_visa_sponsorship=mobility.has_visa_sponsorship,
         has_relocation_support=mobility.has_relocation_support,

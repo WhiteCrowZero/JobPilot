@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.cache import CacheStore
 from job_pilot.core.exceptions import NotFoundError
+from job_pilot.core.pagination import trim_page_items
+from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
@@ -24,10 +26,11 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostFilterOptionsResponse,
     JobPostListItem,
     JobPostListResponse,
-    JobPostSearchParams,
 )
+from job_pilot.modules.job_skills.repository import JobPostSkillRepository
+from job_pilot.modules.job_skills.schemas import SkillLabelResponse
 
-FILTER_OPTIONS_CACHE_KEY = "job_posts:filter_options:open:v1"
+FILTER_OPTIONS_CACHE_KEY = "job_posts:filter_options:open:v2"
 FILTER_OPTIONS_CACHE_TTL_SECONDS = 60 * 30
 
 logger = logging.getLogger(__name__)
@@ -38,20 +41,24 @@ class JobPostService:
 
     def __init__(
         self,
-        repository: JobPostRepository | None = None,
-        lookup_repository: JobPostLookupRepository | None = None,
+        repository: JobPostRepository,
+        lookup_repository: JobPostLookupRepository,
+        skill_repository: JobPostSkillRepository,
     ) -> None:
-        self.repository = repository or JobPostRepository()
-        self.lookup_repository = lookup_repository or JobPostLookupRepository()
+        self.repository = repository
+        self.lookup_repository = lookup_repository
+        self.skill_repository = skill_repository
 
     async def search_job_posts(
         self,
         db: AsyncSession,
-        params: JobPostSearchParams,
+        params: JobPostSearchQuery,
     ) -> JobPostListResponse:
         job_posts = await self.repository.search_job_posts(db=db, params=params)
-        has_next = len(job_posts) > params.page_size
-        page_items = job_posts[: params.page_size]
+        page_items, has_next = trim_page_items(
+            job_posts,
+            page_size=params.page_size,
+        )
         return JobPostListResponse(
             items=[self._to_list_item(job_post) for job_post in page_items],
             page=params.page,
@@ -70,8 +77,13 @@ class JobPostService:
             raise NotFoundError("Job post not found", code="JOB_POST_NOT_FOUND")
         list_item = self._to_list_item(job_post)
         detail = job_post.detail
+        skill_labels = await self.skill_repository.list_skill_labels_for_job(
+            db=db,
+            job_post_id=job_post.id,
+        )
         return JobPostDetailResponse(
             **list_item.model_dump(),
+            skills=[SkillLabelResponse(id=skill_id, name=name) for skill_id, name in skill_labels],
             source_url=detail.source_url if detail is not None else None,
             company_url=detail.company_url if detail is not None else None,
             description=detail.description if detail is not None else None,
@@ -107,6 +119,10 @@ class JobPostService:
             education_levels=list(EducationLevel),
             salary_currencies=await self.lookup_repository.list_salary_currencies(db),
             locations=await self.lookup_repository.list_locations(db),
+            skills=[
+                SkillLabelResponse(id=skill.id, name=skill.name)
+                for skill in await self.lookup_repository.list_skills(db)
+            ],
         )
         await cache.set(
             FILTER_OPTIONS_CACHE_KEY,
@@ -134,7 +150,18 @@ class JobPostService:
             salary_min=job_post.salary_min,
             salary_max=job_post.salary_max,
             salary_currency=job_post.salary_currency,
+            salary_period=job_post.salary_period,
             published_at=job_post.published_at,
             created_at=job_post.created_at,
             status=job_post.status,
         )
+
+
+def build_job_post_service() -> JobPostService:
+    """组装岗位查询 service 的默认依赖。"""
+
+    return JobPostService(
+        repository=JobPostRepository(),
+        lookup_repository=JobPostLookupRepository(),
+        skill_repository=JobPostSkillRepository(),
+    )

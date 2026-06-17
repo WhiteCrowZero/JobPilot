@@ -21,6 +21,7 @@ from job_pilot.modules.job_posts.enums import (
     EmploymentType,
     ExperienceLevel,
     JobPostStatus,
+    SalaryPeriod,
     WorkplaceType,
 )
 from job_pilot.modules.job_posts.models import (
@@ -41,6 +42,7 @@ class RawRecordIngestionAction(StrEnum):
     """raw 消息写入后的下一步动作。"""
 
     PROCESS = "process"
+    RETRY_PROCESS = "retry_process"
     DUPLICATE_MESSAGE = "duplicate_message"
     DUPLICATE_RAW = "duplicate_raw"
 
@@ -126,9 +128,14 @@ class RawJobIngestionRepository:
                 message=message,
                 seen_at=now,
             )
+            action = (
+                RawRecordIngestionAction.RETRY_PROCESS
+                if existing_raw_record.status == RawJobRecordStatus.FAILED
+                else RawRecordIngestionAction.DUPLICATE_RAW
+            )
             return RawRecordWriteResult(
                 raw_record=existing_raw_record,
-                action=RawRecordIngestionAction.DUPLICATE_RAW,
+                action=action,
             )
 
         insert_stmt = pg_insert(RawJobRecord).values(
@@ -139,6 +146,7 @@ class RawJobIngestionRepository:
             external_job_id=message.external_job_id,
             source_url=message.source_url,
             raw_content_hash=raw_content_hash,
+            skill_content_hash=None,
             raw_payload=message.raw_payload,
             status=RawJobRecordStatus.RECEIVED,
             error_message=None,
@@ -187,9 +195,14 @@ class RawJobIngestionRepository:
             message=message,
             seen_at=now,
         )
+        action = (
+            RawRecordIngestionAction.RETRY_PROCESS
+            if conflict_raw_record.status == RawJobRecordStatus.FAILED
+            else RawRecordIngestionAction.DUPLICATE_RAW
+        )
         return RawRecordWriteResult(
             raw_record=conflict_raw_record,
-            action=RawRecordIngestionAction.DUPLICATE_RAW,
+            action=action,
         )
 
     async def get_raw_record_by_message_id(
@@ -290,6 +303,7 @@ class RawJobIngestionRepository:
             salary_min=normalized.salary_min,
             salary_max=normalized.salary_max,
             salary_currency=normalized.salary_currency,
+            salary_period=normalized.salary_period,
             published_at=normalized.published_at,
             first_seen_at=now,
             last_seen_at=now,
@@ -371,6 +385,13 @@ class RawJobIngestionRepository:
                         ),
                         else_=JobPost.salary_currency,
                     ),
+                    "salary_period": case(
+                        (
+                            excluded.salary_period != SalaryPeriod.UNKNOWN,
+                            excluded.salary_period,
+                        ),
+                        else_=JobPost.salary_period,
+                    ),
                     "published_at": case(
                         (excluded.published_at.is_not(None), excluded.published_at),
                         else_=JobPost.published_at,
@@ -424,14 +445,14 @@ class RawJobIngestionRepository:
                     ),
                     "has_visa_sponsorship": case(
                         (
-                            excluded.has_visa_sponsorship.is_(True),
+                            excluded.has_visa_sponsorship.is_not(None),
                             excluded.has_visa_sponsorship,
                         ),
                         else_=JobPostDetail.has_visa_sponsorship,
                     ),
                     "has_relocation_support": case(
                         (
-                            excluded.has_relocation_support.is_(True),
+                            excluded.has_relocation_support.is_not(None),
                             excluded.has_relocation_support,
                         ),
                         else_=JobPostDetail.has_relocation_support,
@@ -453,10 +474,12 @@ class RawJobIngestionRepository:
         *,
         db: AsyncSession,
         raw_record: RawJobRecord,
+        skill_content_hash: str | None,
     ) -> None:
         now = datetime.now(UTC)
         raw_record.status = RawJobRecordStatus.NORMALIZED
         raw_record.error_message = None
+        raw_record.skill_content_hash = skill_content_hash
         raw_record.processed_at = now
         raw_record.last_seen_at = now
         await db.flush()

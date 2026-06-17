@@ -19,6 +19,10 @@ from job_pilot.modules.users.enums import UserStatus
 
 if TYPE_CHECKING:
     from job_pilot.modules.auth.models import AuthIdentity
+    from job_pilot.modules.job_collections.models import JobCollection, JobCollectionFolder
+    from job_pilot.modules.job_targets.models import JobTarget
+    from job_pilot.modules.study_tasks.models import StudyTask
+    from job_pilot.modules.user_skills.models import UserSkill
 
 
 class User(TimestampMixin, SoftDeleteMixin, Base):
@@ -73,6 +77,31 @@ class User(TimestampMixin, SoftDeleteMixin, Base):
     )
 
     identities: Mapped[list[AuthIdentity]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    job_collection_folders: Mapped[list[JobCollectionFolder]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    job_collections: Mapped[list[JobCollection]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    job_targets: Mapped[list[JobTarget]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    skill_profiles: Mapped[list[UserSkill]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    study_tasks: Mapped[list[StudyTask]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )

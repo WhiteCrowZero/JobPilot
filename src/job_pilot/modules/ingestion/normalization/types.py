@@ -7,6 +7,7 @@ from job_pilot.modules.job_posts.enums import (
     EducationLevel,
     EmploymentType,
     ExperienceLevel,
+    SalaryPeriod,
     WorkplaceType,
 )
 
@@ -26,13 +27,14 @@ class NormalizedLocation:
 class NormalizedSalary:
     """规范化后的薪资范围。
 
-    周期语义暂时只保留在 salary_text；避免清洗不准时制造伪结构化字段。
+    周期只解析明确单位，无法判断时保持 unknown。
     """
 
     salary_text: str | None
     salary_min: int | None
     salary_max: int | None
     salary_currency: str
+    salary_period: SalaryPeriod
 
 
 @dataclass(slots=True, frozen=True)
@@ -48,8 +50,8 @@ class NormalizedExperience:
 class NormalizedMobility:
     """规范化后的海外流动性信息。"""
 
-    has_visa_sponsorship: bool
-    has_relocation_support: bool
+    has_visa_sponsorship: bool | None
+    has_relocation_support: bool | None
     work_authorization_note: str | None
 
 
@@ -75,7 +77,8 @@ class NormalizedJob:
     salary_min: int | None
     salary_max: int | None
     salary_currency: str
+    salary_period: SalaryPeriod
     published_at: datetime | None
-    has_visa_sponsorship: bool
-    has_relocation_support: bool
+    has_visa_sponsorship: bool | None
+    has_relocation_support: bool | None
     work_authorization_note: str | None

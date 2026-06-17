@@ -311,6 +311,7 @@ storage/*
 !storage/uploads/.gitkeep
 *草稿*
 *八股*
-杂项/
+#杂项/
 重要问题.md
-
+ai_report/
+front/
