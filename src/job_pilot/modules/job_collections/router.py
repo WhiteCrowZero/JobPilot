@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from job_pilot.api.deps import CurrentActiveUserDep, DbSessionDep
+from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.core.pagination import PageParams
 from job_pilot.modules.job_collections.schemas import (
     JobCollectionCreate,
@@ -16,22 +16,19 @@ from job_pilot.modules.job_collections.schemas import (
     JobCollectionResponse,
     JobCollectionUpdate,
 )
-from job_pilot.modules.job_collections.service import build_job_collection_service
 
 router = APIRouter()
-service = build_job_collection_service()
 
 
 @router.post("/folders", response_model=JobCollectionFolderResponse)
 async def create_collection_folder(
     payload: JobCollectionFolderCreate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionFolderResponse:
     """创建当前用户岗位收藏夹。"""
 
-    return await service.create_folder(
-        session,
+    return await pilot.workbench.create_collection_folder(
         user_id=current_user.id,
         payload=payload,
     )
@@ -39,25 +36,24 @@ async def create_collection_folder(
 
 @router.get("/folders", response_model=list[JobCollectionFolderResponse])
 async def list_collection_folders(
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> list[JobCollectionFolderResponse]:
     """查询当前用户岗位收藏夹。"""
 
-    return await service.list_folders(session, user_id=current_user.id)
+    return await pilot.workbench.list_collection_folders(user_id=current_user.id)
 
 
 @router.patch("/folders/{folder_id}", response_model=JobCollectionFolderResponse)
 async def update_collection_folder(
     folder_id: int,
     payload: JobCollectionFolderUpdate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionFolderResponse:
     """更新当前用户岗位收藏夹。"""
 
-    return await service.update_folder(
-        session,
+    return await pilot.workbench.update_collection_folder(
         user_id=current_user.id,
         folder_id=folder_id,
         payload=payload,
@@ -67,13 +63,12 @@ async def update_collection_folder(
 @router.post("/folders/{folder_id}/default", response_model=JobCollectionFolderResponse)
 async def set_default_collection_folder(
     folder_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionFolderResponse:
     """设置当前用户默认岗位收藏夹。"""
 
-    return await service.set_default_folder(
-        session,
+    return await pilot.workbench.set_default_collection_folder(
         user_id=current_user.id,
         folder_id=folder_id,
     )
@@ -82,13 +77,12 @@ async def set_default_collection_folder(
 @router.delete("/folders/{folder_id}", response_model=JobCollectionFolderResponse)
 async def archive_collection_folder(
     folder_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionFolderResponse:
     """归档当前用户岗位收藏夹。"""
 
-    return await service.archive_folder(
-        session,
+    return await pilot.workbench.archive_collection_folder(
         user_id=current_user.id,
         folder_id=folder_id,
     )
@@ -97,13 +91,12 @@ async def archive_collection_folder(
 @router.post("", response_model=JobCollectionResponse)
 async def collect_job(
     payload: JobCollectionCreate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionResponse:
     """收藏或恢复当前用户岗位收藏。"""
 
-    return await service.collect_job(
-        session,
+    return await pilot.workbench.collect_job(
         user_id=current_user.id,
         payload=payload,
     )
@@ -111,8 +104,8 @@ async def collect_job(
 
 @router.get("", response_model=JobCollectionListResponse)
 async def list_collections(
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
     pagination: Annotated[PageParams, Depends()],
     include_removed: bool = False,
     folder_id: int | None = None,
@@ -125,8 +118,7 @@ async def list_collections(
         page=pagination.page,
         page_size=pagination.page_size,
     )
-    return await service.list_collections(
-        session,
+    return await pilot.workbench.list_collections(
         user_id=current_user.id,
         params=params,
     )
@@ -136,13 +128,12 @@ async def list_collections(
 async def update_collection(
     collection_id: int,
     payload: JobCollectionUpdate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionResponse:
     """更新当前用户岗位收藏。"""
 
-    return await service.update_collection(
-        session,
+    return await pilot.workbench.update_collection(
         user_id=current_user.id,
         collection_id=collection_id,
         payload=payload,
@@ -152,13 +143,12 @@ async def update_collection(
 @router.delete("/{collection_id}", response_model=JobCollectionResponse)
 async def remove_collection(
     collection_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobCollectionResponse:
     """软取消当前用户岗位收藏。"""
 
-    return await service.remove_collection(
-        session,
+    return await pilot.workbench.remove_collection(
         user_id=current_user.id,
         collection_id=collection_id,
     )

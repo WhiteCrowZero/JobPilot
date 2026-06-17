@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from job_pilot.api.deps import CurrentCacheStoreDep, DbSessionDep
+from job_pilot.api.deps import JobPilotDep
 from job_pilot.core.pagination import PageParams
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
@@ -21,15 +21,13 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostSearchParams,
     JobPostSort,
 )
-from job_pilot.modules.job_posts.service import build_job_post_service
 
 router = APIRouter()
-service = build_job_post_service()
 
 
 @router.get("/search", response_model=JobPostListResponse)
 async def search_job_posts(
-    session: DbSessionDep,
+    pilot: JobPilotDep,
     pagination: Annotated[PageParams, Depends()],
     keyword: Annotated[str | None, Query(max_length=100)] = None,
     source_platforms: Annotated[list[str] | None, Query()] = None,
@@ -80,21 +78,20 @@ async def search_job_posts(
         page_size=pagination.page_size,
         include_closed=include_closed,
     )
-    return await service.search_job_posts(session, params)
+    return await pilot.job_posts.search(params)
 
 
 @router.get("/filter-options", response_model=JobPostFilterOptionsResponse)
 async def read_job_post_filter_options(
-    session: DbSessionDep,
-    cache: CurrentCacheStoreDep,
+    pilot: JobPilotDep,
 ) -> JobPostFilterOptionsResponse:
     """读取岗位筛选项候选值。"""
 
-    return await service.get_filter_options(session, cache)
+    return await pilot.job_posts.get_filter_options()
 
 
 @router.get("/{job_post_id}", response_model=JobPostDetailResponse)
-async def read_job_post_detail(job_post_id: int, session: DbSessionDep) -> JobPostDetailResponse:
+async def read_job_post_detail(job_post_id: int, pilot: JobPilotDep) -> JobPostDetailResponse:
     """读取岗位详情。"""
 
-    return await service.get_job_post_detail(session, job_post_id)
+    return await pilot.job_posts.get_detail(job_post_id=job_post_id)

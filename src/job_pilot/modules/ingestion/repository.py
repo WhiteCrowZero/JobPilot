@@ -42,6 +42,7 @@ class RawRecordIngestionAction(StrEnum):
     """raw 消息写入后的下一步动作。"""
 
     PROCESS = "process"
+    RETRY_PROCESS = "retry_process"
     DUPLICATE_MESSAGE = "duplicate_message"
     DUPLICATE_RAW = "duplicate_raw"
 
@@ -127,9 +128,14 @@ class RawJobIngestionRepository:
                 message=message,
                 seen_at=now,
             )
+            action = (
+                RawRecordIngestionAction.RETRY_PROCESS
+                if existing_raw_record.status == RawJobRecordStatus.FAILED
+                else RawRecordIngestionAction.DUPLICATE_RAW
+            )
             return RawRecordWriteResult(
                 raw_record=existing_raw_record,
-                action=RawRecordIngestionAction.DUPLICATE_RAW,
+                action=action,
             )
 
         insert_stmt = pg_insert(RawJobRecord).values(
@@ -189,9 +195,14 @@ class RawJobIngestionRepository:
             message=message,
             seen_at=now,
         )
+        action = (
+            RawRecordIngestionAction.RETRY_PROCESS
+            if conflict_raw_record.status == RawJobRecordStatus.FAILED
+            else RawRecordIngestionAction.DUPLICATE_RAW
+        )
         return RawRecordWriteResult(
             raw_record=conflict_raw_record,
-            action=RawRecordIngestionAction.DUPLICATE_RAW,
+            action=action,
         )
 
     async def get_raw_record_by_message_id(
@@ -434,21 +445,21 @@ class RawJobIngestionRepository:
                     ),
                     "has_visa_sponsorship": case(
                         (
-                            excluded.has_visa_sponsorship.is_(True),
+                            excluded.description.is_not(None),
                             excluded.has_visa_sponsorship,
                         ),
                         else_=JobPostDetail.has_visa_sponsorship,
                     ),
                     "has_relocation_support": case(
                         (
-                            excluded.has_relocation_support.is_(True),
+                            excluded.description.is_not(None),
                             excluded.has_relocation_support,
                         ),
                         else_=JobPostDetail.has_relocation_support,
                     ),
                     "work_authorization_note": case(
                         (
-                            func.nullif(excluded.work_authorization_note, "").is_not(None),
+                            excluded.description.is_not(None),
                             excluded.work_authorization_note,
                         ),
                         else_=JobPostDetail.work_authorization_note,

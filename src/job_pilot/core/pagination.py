@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel, Field
 
 
@@ -34,3 +36,14 @@ class PageResult[T](BaseModel):
     page_size: int
     total: int | None = None
     has_next: bool | None = None
+
+
+def trim_page_items[T](
+    items: Sequence[T],
+    *,
+    page_size: int,
+) -> tuple[list[T], bool]:
+    """裁剪 limit + 1 查询结果，返回当前页 items 和 has_next。"""
+
+    has_next = len(items) > page_size
+    return list(items[:page_size]), has_next

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from job_pilot.api.deps import CurrentActiveUserDep, DbSessionDep
+from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.core.pagination import PageParams
 from job_pilot.modules.user_skills.schemas import (
     UserSkillListParams,
@@ -13,22 +13,19 @@ from job_pilot.modules.user_skills.schemas import (
     UserSkillUpdate,
     UserSkillUpsert,
 )
-from job_pilot.modules.user_skills.service import build_user_skill_service
 
 router = APIRouter()
-service = build_user_skill_service()
 
 
 @router.post("", response_model=UserSkillResponse)
 async def upsert_user_skill(
     payload: UserSkillUpsert,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> UserSkillResponse:
     """新增或恢复当前用户技能画像。"""
 
-    return await service.upsert_user_skill(
-        session,
+    return await pilot.workbench.upsert_user_skill(
         user_id=current_user.id,
         payload=payload,
     )
@@ -36,8 +33,8 @@ async def upsert_user_skill(
 
 @router.get("", response_model=UserSkillListResponse)
 async def list_user_skills(
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
     pagination: Annotated[PageParams, Depends()],
     include_archived: bool = False,
     skill_ids: Annotated[list[int] | None, Query()] = None,
@@ -50,8 +47,7 @@ async def list_user_skills(
         page=pagination.page,
         page_size=pagination.page_size,
     )
-    return await service.list_user_skills(
-        session,
+    return await pilot.workbench.list_user_skills(
         user_id=current_user.id,
         params=params,
     )
@@ -61,13 +57,12 @@ async def list_user_skills(
 async def update_user_skill(
     skill_id: int,
     payload: UserSkillUpdate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> UserSkillResponse:
     """更新当前用户技能画像。"""
 
-    return await service.update_user_skill(
-        session,
+    return await pilot.workbench.update_user_skill(
         user_id=current_user.id,
         skill_id=skill_id,
         payload=payload,
@@ -77,13 +72,12 @@ async def update_user_skill(
 @router.delete("/{skill_id}", response_model=UserSkillResponse)
 async def archive_user_skill(
     skill_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> UserSkillResponse:
     """归档当前用户技能画像。"""
 
-    return await service.archive_user_skill(
-        session,
+    return await pilot.workbench.archive_user_skill(
         user_id=current_user.id,
         skill_id=skill_id,
     )

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from job_pilot.api.deps import CurrentActiveUserDep, DbSessionDep
+from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.core.pagination import PageParams
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.schemas import (
@@ -14,22 +14,19 @@ from job_pilot.modules.job_targets.schemas import (
     JobTargetResponse,
     JobTargetUpdate,
 )
-from job_pilot.modules.job_targets.service import build_job_target_service
 
 router = APIRouter()
-service = build_job_target_service()
 
 
 @router.post("", response_model=JobTargetResponse)
 async def create_target(
     payload: JobTargetCreate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobTargetResponse:
     """新增或恢复当前用户目标岗位。"""
 
-    return await service.create_target(
-        session,
+    return await pilot.workbench.create_target(
         user_id=current_user.id,
         payload=payload,
     )
@@ -37,8 +34,8 @@ async def create_target(
 
 @router.get("", response_model=JobTargetListResponse)
 async def list_targets(
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
     pagination: Annotated[PageParams, Depends()],
     statuses: Annotated[list[JobTargetStatus] | None, Query()] = None,
 ) -> JobTargetListResponse:
@@ -49,8 +46,7 @@ async def list_targets(
         page=pagination.page,
         page_size=pagination.page_size,
     )
-    return await service.list_targets(
-        session,
+    return await pilot.workbench.list_targets(
         user_id=current_user.id,
         params=params,
     )
@@ -60,13 +56,12 @@ async def list_targets(
 async def update_target(
     target_id: int,
     payload: JobTargetUpdate,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobTargetResponse:
     """更新当前用户目标岗位。"""
 
-    return await service.update_target(
-        session,
+    return await pilot.workbench.update_target(
         user_id=current_user.id,
         target_id=target_id,
         payload=payload,
@@ -76,13 +71,12 @@ async def update_target(
 @router.delete("/{target_id}", response_model=JobTargetResponse)
 async def archive_target(
     target_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
 ) -> JobTargetResponse:
     """归档当前用户目标岗位。"""
 
-    return await service.archive_target(
-        session,
+    return await pilot.workbench.archive_target(
         user_id=current_user.id,
         target_id=target_id,
     )

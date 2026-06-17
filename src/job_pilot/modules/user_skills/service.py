@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.pagination import trim_page_items
 from job_pilot.modules.user_skills.exceptions import (
     StandardSkillNotFoundError,
     UserSkillNotFoundError,
@@ -35,22 +36,16 @@ class UserSkillService:
         create_values = payload.model_dump(exclude={"skill_id"})
         update_values = payload.model_dump(exclude={"skill_id"}, exclude_unset=True)
 
-        try:
-            if not await self.repository.skill_exists(db, skill_id=payload.skill_id):
-                raise StandardSkillNotFoundError()
+        if not await self.repository.skill_exists(db, skill_id=payload.skill_id):
+            raise StandardSkillNotFoundError()
 
-            user_skill = await self.repository.upsert_active_skill(
-                db,
-                user_id=user_id,
-                skill_id=payload.skill_id,
-                create_values=create_values,
-                update_values=update_values,
-            )
-
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        user_skill = await self.repository.upsert_active_skill(
+            db,
+            user_id=user_id,
+            skill_id=payload.skill_id,
+            create_values=create_values,
+            update_values=update_values,
+        )
 
         return self._to_response(user_skill)
 
@@ -68,8 +63,10 @@ class UserSkillService:
             user_id=user_id,
             params=params,
         )
-        has_next = len(user_skills) > params.page_size
-        page_items = user_skills[: params.page_size]
+        page_items, has_next = trim_page_items(
+            user_skills,
+            page_size=params.page_size,
+        )
         return UserSkillListResponse(
             items=[self._to_response(user_skill) for user_skill in page_items],
             page=params.page,
@@ -88,25 +85,20 @@ class UserSkillService:
     ) -> UserSkillResponse:
         """更新当前用户某个技能画像。"""
 
-        try:
-            user_skill = await self.repository.get_user_skill(
+        user_skill = await self.repository.get_user_skill(
+            db,
+            user_id=user_id,
+            skill_id=skill_id,
+        )
+        if user_skill is None:
+            raise UserSkillNotFoundError()
+        values = self._build_update_values(payload)
+        if values:
+            user_skill = await self.repository.update_user_skill(
                 db,
-                user_id=user_id,
-                skill_id=skill_id,
+                user_skill=user_skill,
+                values=values,
             )
-            if user_skill is None:
-                raise UserSkillNotFoundError()
-            values = self._build_update_values(payload)
-            if values:
-                user_skill = await self.repository.update_user_skill(
-                    db,
-                    user_skill=user_skill,
-                    values=values,
-                )
-                await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
         return self._to_response(user_skill)
 
     async def archive_user_skill(
@@ -118,18 +110,13 @@ class UserSkillService:
     ) -> UserSkillResponse:
         """归档当前用户某个技能画像。"""
 
-        try:
-            user_skill = await self.repository.archive_user_skill(
-                db,
-                user_id=user_id,
-                skill_id=skill_id,
-            )
-            if user_skill is None:
-                raise UserSkillNotFoundError()
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        user_skill = await self.repository.archive_user_skill(
+            db,
+            user_id=user_id,
+            skill_id=skill_id,
+        )
+        if user_skill is None:
+            raise UserSkillNotFoundError()
         return self._to_response(user_skill)
 
     @staticmethod

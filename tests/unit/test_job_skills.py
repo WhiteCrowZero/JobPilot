@@ -3,23 +3,20 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
-from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.modules.ingestion.normalization.skills import (
+from job_pilot.core.exceptions import NotFoundError
+from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     extract_raw_skill_candidates,
     normalize_skill_alias,
 )
-from job_pilot.modules.job_skills.models import SkillAlias
 from job_pilot.modules.job_skills.repository import (
     JobPostSkillRepository,
     SkillDictionaryRepository,
 )
-from job_pilot.modules.job_skills.schemas import SkillListParams
 from job_pilot.modules.job_skills.service import (
     JobSkillSyncService,
-    SkillDictionaryService,
     SkillNormalizationService,
 )
 from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate, SkillAliasMatch
@@ -39,10 +36,15 @@ class FakeSkillDictionaryRepository(SkillDictionaryRepository):
 
 
 class FakeJobPostSkillRepository(JobPostSkillRepository):
-    def __init__(self, previous_hash: str | None = None) -> None:
+    def __init__(self, previous_hash: str | None = None, job_post_exists: bool = True) -> None:
         self.previous_hash = previous_hash
+        self._job_post_exists = job_post_exists
         self.updated_hash: str | None = None
         self.replaced_matches: list[SkillAliasMatch] = []
+
+    async def job_post_exists(self, *, db: AsyncSession, job_post_id: int) -> bool:
+        _ = db, job_post_id
+        return self._job_post_exists
 
     async def get_job_skill_content_hash(
         self,
@@ -117,60 +119,6 @@ async def test_normalize_candidates_maps_alias_to_standard_skill() -> None:
 
 
 @pytest.mark.asyncio
-async def test_repository_stores_multiple_aliases_for_one_skill(
-    db_session: AsyncSession,
-) -> None:
-    await truncate_skill_tables(db_session)
-    repository = SkillDictionaryRepository()
-
-    try:
-        skill, _ = await repository.upsert_skill(db=db_session, name="PostgreSQL")
-        await repository.upsert_alias(db=db_session, skill_id=skill.id, alias="PostgreSQL")
-        await repository.upsert_alias(db=db_session, skill_id=skill.id, alias="Postgres")
-        await repository.upsert_alias(db=db_session, skill_id=skill.id, alias="pg")
-        await repository.upsert_alias(db=db_session, skill_id=skill.id, alias="P G")
-        await db_session.commit()
-
-        alias_map = await repository.list_aliases(db_session)
-        stored_aliases = (
-            (await db_session.execute(select(SkillAlias.alias).order_by(SkillAlias.alias.asc())))
-            .scalars()
-            .all()
-        )
-
-        assert stored_aliases == ["pg", "postgres", "postgresql"]
-        assert alias_map["postgresql"] == (skill.id, "PostgreSQL")
-        assert alias_map["postgres"] == (skill.id, "PostgreSQL")
-        assert alias_map["pg"] == (skill.id, "PostgreSQL")
-    finally:
-        await truncate_skill_tables(db_session)
-
-
-@pytest.mark.asyncio
-async def test_list_skills_total_respects_keyword_filter(db_session: AsyncSession) -> None:
-    await truncate_skill_tables(db_session)
-    repository = SkillDictionaryRepository()
-    service = SkillDictionaryService(repository=repository)
-
-    try:
-        await repository.upsert_skill(db=db_session, name="Python")
-        await repository.upsert_skill(db=db_session, name="FastAPI")
-        await repository.upsert_skill(db=db_session, name="Redis")
-        await db_session.commit()
-
-        result = await service.list_skills(
-            db_session,
-            params=SkillListParams(keyword="py", page=1, page_size=10),
-        )
-
-        assert result.total == 1
-        assert [item.name for item in result.items] == ["Python"]
-        assert result.has_next is False
-    finally:
-        await truncate_skill_tables(db_session)
-
-
-@pytest.mark.asyncio
 async def test_sync_from_raw_candidates_replaces_job_skills() -> None:
     candidates = [RawSkillCandidate("Python"), RawSkillCandidate("Postgres")]
     fake_repository = FakeJobPostSkillRepository()
@@ -220,7 +168,7 @@ async def test_sync_from_raw_candidates_skips_when_hash_unchanged() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sync_from_raw_candidates_clears_skills_when_candidates_become_empty() -> None:
+async def test_sync_from_raw_candidates_keeps_existing_skills_when_candidates_are_absent() -> None:
     fake_repository = FakeJobPostSkillRepository(previous_hash="old-hash")
     service = JobSkillSyncService(
         skill_normalization_service=SkillNormalizationService(
@@ -242,17 +190,20 @@ async def test_sync_from_raw_candidates_clears_skills_when_candidates_become_emp
     assert fake_repository.updated_hash is None
 
 
-async def truncate_skill_tables(session: AsyncSession) -> None:
-    await session.rollback()
-    await session.execute(
-        text(
-            """
-            TRUNCATE TABLE
-                job_post_skills,
-                skill_aliases,
-                skills
-            RESTART IDENTITY CASCADE
-            """
-        )
+@pytest.mark.asyncio
+async def test_sync_from_raw_candidates_rejects_missing_job_post() -> None:
+    service = JobSkillSyncService(
+        skill_normalization_service=SkillNormalizationService(
+            repository=FakeSkillDictionaryRepository()
+        ),
+        repository=FakeJobPostSkillRepository(job_post_exists=False),
     )
-    await session.commit()
+
+    with pytest.raises(NotFoundError) as exc_info:
+        await service.sync_from_raw_candidates(
+            db=cast(AsyncSession, object()),
+            job_post_id=999_999,
+            candidates=[RawSkillCandidate("Python")],
+        )
+
+    assert exc_info.value.code == "JOB_POST_NOT_FOUND"

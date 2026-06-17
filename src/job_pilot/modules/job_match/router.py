@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from job_pilot.api.deps import CurrentActiveUserDep, DbSessionDep
+from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.modules.job_match.contracts import (
     JobSkillCoverageResult,
     SkillCoverageResultItem,
@@ -17,23 +17,21 @@ from job_pilot.modules.job_match.schemas import (
     TargetSkillSummaryItem,
     TargetSkillSummaryResponse,
 )
-from job_pilot.modules.job_match.service import DEFAULT_REQUIRED_LEVEL, build_job_match_service
+from job_pilot.modules.job_match.service import DEFAULT_REQUIRED_LEVEL
 
 router = APIRouter()
-service = build_job_match_service()
 
 
 @router.get("/jobs/{job_post_id}/coverage", response_model=JobSkillCoverageResponse)
 async def analyze_job_skill_coverage(
     job_post_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
     required_level: Annotated[int, Query(ge=1, le=5)] = DEFAULT_REQUIRED_LEVEL,
 ) -> JobSkillCoverageResponse:
     """分析当前用户对某个岗位技能标签的覆盖情况。"""
 
-    result = await service.analyze_job_skill_coverage(
-        session,
+    result = await pilot.workbench.analyze_job_skill_coverage(
         user_id=current_user.id,
         job_post_id=job_post_id,
         required_level=required_level,
@@ -44,14 +42,13 @@ async def analyze_job_skill_coverage(
 @router.get("/targets/{target_id}/coverage", response_model=JobSkillCoverageResponse)
 async def analyze_target_skill_coverage(
     target_id: int,
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
     required_level: Annotated[int, Query(ge=1, le=5)] = DEFAULT_REQUIRED_LEVEL,
 ) -> JobSkillCoverageResponse:
     """分析当前用户某个目标岗位的技能覆盖情况。"""
 
-    result = await service.analyze_target_skill_coverage(
-        session,
+    result = await pilot.workbench.analyze_target_skill_coverage(
         user_id=current_user.id,
         target_id=target_id,
         required_level=required_level,
@@ -61,15 +58,14 @@ async def analyze_target_skill_coverage(
 
 @router.get("/targets/skills", response_model=TargetSkillSummaryResponse)
 async def analyze_target_skill_summary(
-    session: DbSessionDep,
     current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     required_level: Annotated[int, Query(ge=1, le=5)] = DEFAULT_REQUIRED_LEVEL,
 ) -> TargetSkillSummaryResponse:
     """统计当前 active/paused 目标岗位中高频出现的技能。"""
 
-    result = await service.analyze_target_skill_summary(
-        session,
+    result = await pilot.workbench.analyze_target_skill_summary(
         user_id=current_user.id,
         limit=limit,
         required_level=required_level,

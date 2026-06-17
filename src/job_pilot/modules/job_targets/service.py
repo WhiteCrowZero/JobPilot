@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.pagination import trim_page_items
 from job_pilot.modules.job_collections.models import JobCollection
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.exceptions import (
@@ -41,28 +42,23 @@ class JobTargetService:
         update_values = payload.model_dump(exclude={"job_post_id"}, exclude_unset=True)
         update_values["source_collection_id"] = payload.source_collection_id
 
-        try:
-            await self._ensure_job_exists(db, job_post_id=payload.job_post_id)
-            await self._validate_source_collection(
-                db,
-                user_id=user_id,
-                job_post_id=payload.job_post_id,
-                source_collection_id=payload.source_collection_id,
-            )
-            if payload.is_primary:
-                await self.repository.clear_primary_targets(db, user_id=user_id)
+        await self._ensure_job_exists(db, job_post_id=payload.job_post_id)
+        await self._validate_source_collection(
+            db,
+            user_id=user_id,
+            job_post_id=payload.job_post_id,
+            source_collection_id=payload.source_collection_id,
+        )
+        if payload.is_primary:
+            await self.repository.clear_primary_targets(db, user_id=user_id)
 
-            target = await self.repository.upsert_active_target(
-                db,
-                user_id=user_id,
-                job_post_id=payload.job_post_id,
-                create_values=create_values,
-                update_values=update_values,
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        target = await self.repository.upsert_active_target(
+            db,
+            user_id=user_id,
+            job_post_id=payload.job_post_id,
+            create_values=create_values,
+            update_values=update_values,
+        )
 
         return self._to_response(target)
 
@@ -76,8 +72,10 @@ class JobTargetService:
         """分页读取当前用户目标岗位。"""
 
         targets = await self.repository.list_user_targets(db, user_id=user_id, params=params)
-        has_next = len(targets) > params.page_size
-        page_items = targets[: params.page_size]
+        page_items, has_next = trim_page_items(
+            targets,
+            page_size=params.page_size,
+        )
         return JobTargetListResponse(
             items=[self._to_response(target) for target in page_items],
             page=params.page,
@@ -96,33 +94,28 @@ class JobTargetService:
     ) -> JobTargetResponse:
         """更新当前用户目标岗位详情和状态。"""
 
-        try:
-            target = await self.repository.get_user_target(
+        target = await self.repository.get_user_target(
+            db,
+            user_id=user_id,
+            target_id=target_id,
+        )
+        if target is None:
+            raise JobTargetNotFoundError()
+
+        values = self._build_update_values(payload)
+        if "status" in values:
+            self._apply_status_lifecycle(target=target, values=values)
+        else:
+            self._apply_primary_lifecycle(target=target, values=values)
+        if self._will_be_current_primary(target=target, values=values):
+            await self.repository.clear_primary_targets(
                 db,
                 user_id=user_id,
-                target_id=target_id,
+                exclude_target_id=target.id,
             )
-            if target is None:
-                raise JobTargetNotFoundError()
 
-            values = self._build_update_values(payload)
-            if "status" in values:
-                self._apply_status_lifecycle(target=target, values=values)
-            else:
-                self._apply_primary_lifecycle(target=target, values=values)
-            if self._will_be_current_primary(target=target, values=values):
-                await self.repository.clear_primary_targets(
-                    db,
-                    user_id=user_id,
-                    exclude_target_id=target.id,
-                )
-
-            if values:
-                target = await self.repository.update_target(db, target=target, values=values)
-                await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+        if values:
+            target = await self.repository.update_target(db, target=target, values=values)
 
         return self._to_response(target)
 

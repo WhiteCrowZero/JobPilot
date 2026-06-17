@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_collections.enums import (
     JobCollectionFolderStatus,
     JobCollectionStatus,
@@ -276,29 +277,22 @@ class JobCollectionRepository:
     ) -> JobCollection:
         """新增或恢复 active 岗位收藏。"""
 
-        insert_stmt = pg_insert(JobCollection).values(
-            user_id=user_id,
-            job_post_id=job_post_id,
-            status=JobCollectionStatus.ACTIVE,
-            removed_at=None,
-            **create_values,
+        return await upsert_restoring_record(
+            db,
+            model=JobCollection,
+            conflict_constraint="uq_job_collections_user_job",
+            identity_values={
+                "user_id": user_id,
+                "job_post_id": job_post_id,
+            },
+            create_values=create_values,
+            restore_values={
+                "status": JobCollectionStatus.ACTIVE,
+                "removed_at": None,
+                "collected_at": func.now(),
+            },
+            update_values=update_values,
         )
-        conflict_values: dict[str, object] = {
-            "status": JobCollectionStatus.ACTIVE,
-            "removed_at": None,
-            "collected_at": func.now(),
-            "updated_at": func.now(),
-        }
-        conflict_values.update(update_values)
-        result = await db.execute(
-            insert_stmt.on_conflict_do_update(
-                constraint="uq_job_collections_user_job",
-                set_=conflict_values,
-            )
-            .returning(JobCollection)
-            .execution_options(populate_existing=True)
-        )
-        return result.scalar_one()
 
     async def update_collection(
         self,

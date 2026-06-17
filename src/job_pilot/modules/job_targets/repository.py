@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_collections.enums import JobCollectionStatus
 from job_pilot.modules.job_collections.models import JobCollection
 from job_pilot.modules.job_posts.models import JobPost
@@ -129,32 +129,23 @@ class JobTargetRepository:
     ) -> JobTarget:
         """新增或恢复 active 目标岗位。"""
 
-        insert_stmt = pg_insert(JobTarget).values(
-            user_id=user_id,
-            job_post_id=job_post_id,
-            status=JobTargetStatus.ACTIVE,
-            targeted_at=func.now(),
-            completed_at=None,
-            archived_at=None,
-            **create_values,
+        return await upsert_restoring_record(
+            db,
+            model=JobTarget,
+            conflict_constraint="uq_job_targets_user_job",
+            identity_values={
+                "user_id": user_id,
+                "job_post_id": job_post_id,
+            },
+            create_values=create_values,
+            restore_values={
+                "status": JobTargetStatus.ACTIVE,
+                "targeted_at": func.now(),
+                "completed_at": None,
+                "archived_at": None,
+            },
+            update_values=update_values,
         )
-        conflict_values: dict[str, object] = {
-            "status": JobTargetStatus.ACTIVE,
-            "targeted_at": func.now(),
-            "completed_at": None,
-            "archived_at": None,
-            "updated_at": func.now(),
-        }
-        conflict_values.update(update_values)
-        result = await db.execute(
-            insert_stmt.on_conflict_do_update(
-                constraint="uq_job_targets_user_job",
-                set_=conflict_values,
-            )
-            .returning(JobTarget)
-            .execution_options(populate_existing=True)
-        )
-        return result.scalar_one()
 
     async def update_target(
         self,

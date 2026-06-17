@@ -5,8 +5,8 @@ from datetime import date
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.application import JobPilot
 from job_pilot.modules.job_collections.schemas import JobCollectionCreate
-from job_pilot.modules.job_collections.service import build_job_collection_service
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.exceptions import (
     JobPostForTargetNotFoundError,
@@ -18,27 +18,115 @@ from job_pilot.modules.job_targets.schemas import (
     JobTargetListParams,
     JobTargetUpdate,
 )
-from job_pilot.modules.job_targets.service import build_job_target_service
-from tests.helpers.workbench import (
+from tests.helpers.builders import (
     create_test_user,
     seed_test_job_post,
-    truncate_workbench_tables,
 )
+from tests.helpers.database import truncate_workbench_tables
 
 
 @pytest.mark.asyncio
-async def test_create_target_directly_and_restore_completed_target(
+async def test_restore_completed_target_clears_completed_at_and_preserves_unset_fields(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    service = build_job_target_service()
 
     try:
         user = await create_test_user(db_session)
         job_post = await seed_test_job_post(db_session)
 
-        created = await service.create_target(
-            db_session,
+        created = await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(
+                job_post_id=job_post.id,
+                priority=1,
+                note="Original target note",
+                target_date=date(2026, 7, 1),
+            ),
+        )
+        completed = await pilot.workbench.update_target(
+            user_id=user.id,
+            target_id=created.id,
+            payload=JobTargetUpdate(status=JobTargetStatus.COMPLETED),
+        )
+        restored = await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(job_post_id=job_post.id),
+        )
+
+        assert completed.status == JobTargetStatus.COMPLETED
+        assert completed.completed_at is not None
+        assert restored.id == created.id
+        assert restored.status == JobTargetStatus.ACTIVE
+        assert restored.completed_at is None
+        assert restored.archived_at is None
+        assert restored.priority == 1
+        assert restored.note == "Original target note"
+        assert restored.target_date == date(2026, 7, 1)
+    finally:
+        await truncate_workbench_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_restore_archived_target_can_become_primary_and_clears_old_primary(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    await truncate_workbench_tables(db_session)
+
+    try:
+        user = await create_test_user(db_session)
+        primary_job = await seed_test_job_post(db_session, title="Primary Backend Engineer")
+        archived_job = await seed_test_job_post(db_session, title="Archived Backend Engineer")
+
+        old_primary = await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(job_post_id=primary_job.id, is_primary=True),
+        )
+        archived_target = await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(job_post_id=archived_job.id),
+        )
+        archived = await pilot.workbench.archive_target(
+            user_id=user.id,
+            target_id=archived_target.id,
+        )
+        restored = await pilot.workbench.create_target(
+            user_id=user.id,
+            payload=JobTargetCreate(job_post_id=archived_job.id, is_primary=True),
+        )
+        targets = await pilot.workbench.list_targets(
+            user_id=user.id,
+            params=JobTargetListParams(page=1, page_size=10),
+        )
+        target_by_id = {item.id: item for item in targets.items}
+
+        assert archived.status == JobTargetStatus.ARCHIVED
+        assert archived.archived_at is not None
+        assert archived.is_primary is False
+        assert restored.id == archived_target.id
+        assert restored.status == JobTargetStatus.ACTIVE
+        assert restored.archived_at is None
+        assert restored.is_primary is True
+        assert target_by_id[old_primary.id].is_primary is False
+        assert target_by_id[restored.id].is_primary is True
+    finally:
+        await truncate_workbench_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_create_target_directly_and_restore_completed_target(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    await truncate_workbench_tables(db_session)
+
+    try:
+        user = await create_test_user(db_session)
+        job_post = await seed_test_job_post(db_session)
+
+        created = await pilot.workbench.create_target(
             user_id=user.id,
             payload=JobTargetCreate(
                 job_post_id=job_post.id,
@@ -48,20 +136,17 @@ async def test_create_target_directly_and_restore_completed_target(
                 target_date=date(2026, 7, 1),
             ),
         )
-        completed = await service.update_target(
-            db_session,
+        completed = await pilot.workbench.update_target(
             user_id=user.id,
             target_id=created.id,
             payload=JobTargetUpdate(status=JobTargetStatus.COMPLETED),
         )
-        updated_completed = await service.update_target(
-            db_session,
+        updated_completed = await pilot.workbench.update_target(
             user_id=user.id,
             target_id=created.id,
             payload=JobTargetUpdate(note="Keep completion time"),
         )
-        restored = await service.create_target(
-            db_session,
+        restored = await pilot.workbench.create_target(
             user_id=user.id,
             payload=JobTargetCreate(job_post_id=job_post.id),
         )
@@ -82,8 +167,7 @@ async def test_create_target_directly_and_restore_completed_target(
         assert restored.note == "Keep completion time"
 
         with pytest.raises(JobPostForTargetNotFoundError):
-            await service.create_target(
-                db_session,
+            await pilot.workbench.create_target(
                 user_id=user.id,
                 payload=JobTargetCreate(job_post_id=999_999),
             )
@@ -93,29 +177,25 @@ async def test_create_target_directly_and_restore_completed_target(
 
 @pytest.mark.asyncio
 async def test_create_target_validates_source_collection_ownership_and_job(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    collection_service = build_job_collection_service()
-    target_service = build_job_target_service()
 
     try:
         owner = await create_test_user(db_session, display_name="Owner")
         other_user = await create_test_user(db_session, display_name="Other")
         backend_job = await seed_test_job_post(db_session, title="Backend Engineer")
         data_job = await seed_test_job_post(db_session, title="Data Engineer")
-        matching_collection = await collection_service.collect_job(
-            db_session,
+        matching_collection = await pilot.workbench.collect_job(
             user_id=owner.id,
             payload=JobCollectionCreate(job_post_id=backend_job.id),
         )
-        mismatched_collection = await collection_service.collect_job(
-            db_session,
+        mismatched_collection = await pilot.workbench.collect_job(
             user_id=owner.id,
             payload=JobCollectionCreate(job_post_id=data_job.id),
         )
-        other_collection = await collection_service.collect_job(
-            db_session,
+        other_collection = await pilot.workbench.collect_job(
             user_id=other_user.id,
             payload=JobCollectionCreate(job_post_id=backend_job.id),
         )
@@ -125,8 +205,7 @@ async def test_create_target_validates_source_collection_ownership_and_job(
         mismatched_collection_id = mismatched_collection.id
         other_collection_id = other_collection.id
 
-        created = await target_service.create_target(
-            db_session,
+        created = await pilot.workbench.create_target(
             user_id=owner_id,
             payload=JobTargetCreate(
                 job_post_id=backend_job_id,
@@ -136,14 +215,12 @@ async def test_create_target_validates_source_collection_ownership_and_job(
 
         assert created.source_collection_id == matching_collection_id
 
-        completed = await target_service.update_target(
-            db_session,
+        completed = await pilot.workbench.update_target(
             user_id=owner_id,
             target_id=created.id,
             payload=JobTargetUpdate(status=JobTargetStatus.COMPLETED),
         )
-        restored_without_source = await target_service.create_target(
-            db_session,
+        restored_without_source = await pilot.workbench.create_target(
             user_id=owner_id,
             payload=JobTargetCreate(job_post_id=backend_job_id),
         )
@@ -153,8 +230,7 @@ async def test_create_target_validates_source_collection_ownership_and_job(
         assert restored_without_source.source_collection_id is None
 
         with pytest.raises(JobTargetSourceCollectionInvalidError):
-            await target_service.create_target(
-                db_session,
+            await pilot.workbench.create_target(
                 user_id=owner_id,
                 payload=JobTargetCreate(
                     job_post_id=backend_job_id,
@@ -163,8 +239,7 @@ async def test_create_target_validates_source_collection_ownership_and_job(
             )
 
         with pytest.raises(JobTargetSourceCollectionInvalidError):
-            await target_service.create_target(
-                db_session,
+            await pilot.workbench.create_target(
                 user_id=owner_id,
                 payload=JobTargetCreate(
                     job_post_id=backend_job_id,
@@ -177,61 +252,52 @@ async def test_create_target_validates_source_collection_ownership_and_job(
 
 @pytest.mark.asyncio
 async def test_primary_target_replacement_and_status_lifecycle(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    service = build_job_target_service()
 
     try:
         user = await create_test_user(db_session)
         backend_job = await seed_test_job_post(db_session, title="Backend Engineer")
         data_job = await seed_test_job_post(db_session, title="Data Engineer")
-        backend_target = await service.create_target(
-            db_session,
+        backend_target = await pilot.workbench.create_target(
             user_id=user.id,
             payload=JobTargetCreate(job_post_id=backend_job.id, priority=2, is_primary=True),
         )
-        data_target = await service.create_target(
-            db_session,
+        data_target = await pilot.workbench.create_target(
             user_id=user.id,
             payload=JobTargetCreate(job_post_id=data_job.id, priority=1, is_primary=True),
         )
 
-        current_targets = await service.list_targets(
-            db_session,
+        current_targets = await pilot.workbench.list_targets(
             user_id=user.id,
             params=JobTargetListParams(page=1, page_size=10),
         )
-        paused = await service.update_target(
-            db_session,
+        paused = await pilot.workbench.update_target(
             user_id=user.id,
             target_id=backend_target.id,
             payload=JobTargetUpdate(status=JobTargetStatus.PAUSED, is_primary=True),
         )
-        completed = await service.update_target(
-            db_session,
+        completed = await pilot.workbench.update_target(
             user_id=user.id,
             target_id=paused.id,
             payload=JobTargetUpdate(status=JobTargetStatus.COMPLETED),
         )
-        reactivated = await service.update_target(
-            db_session,
+        reactivated = await pilot.workbench.update_target(
             user_id=user.id,
             target_id=paused.id,
             payload=JobTargetUpdate(status=JobTargetStatus.ACTIVE),
         )
-        archived = await service.archive_target(
-            db_session,
+        archived = await pilot.workbench.archive_target(
             user_id=user.id,
             target_id=data_target.id,
         )
-        default_list = await service.list_targets(
-            db_session,
+        default_list = await pilot.workbench.list_targets(
             user_id=user.id,
             params=JobTargetListParams(page=1, page_size=10),
         )
-        archived_list = await service.list_targets(
-            db_session,
+        archived_list = await pilot.workbench.list_targets(
             user_id=user.id,
             params=JobTargetListParams(
                 statuses=[JobTargetStatus.ARCHIVED],
@@ -265,24 +331,22 @@ async def test_primary_target_replacement_and_status_lifecycle(
 
 @pytest.mark.asyncio
 async def test_update_target_hides_other_users_target(
+    pilot: JobPilot,
     db_session: AsyncSession,
 ) -> None:
     await truncate_workbench_tables(db_session)
-    service = build_job_target_service()
 
     try:
         owner = await create_test_user(db_session, display_name="Owner")
         other_user = await create_test_user(db_session, display_name="Other")
         job_post = await seed_test_job_post(db_session)
-        target = await service.create_target(
-            db_session,
+        target = await pilot.workbench.create_target(
             user_id=owner.id,
             payload=JobTargetCreate(job_post_id=job_post.id),
         )
 
         with pytest.raises(JobTargetNotFoundError):
-            await service.update_target(
-                db_session,
+            await pilot.workbench.update_target(
                 user_id=other_user.id,
                 target_id=target.id,
                 payload=JobTargetUpdate(note="Cross user"),

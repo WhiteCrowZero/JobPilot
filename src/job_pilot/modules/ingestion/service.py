@@ -9,13 +9,13 @@ from job_pilot.core.exceptions import AppError, BadRequestError
 from job_pilot.modules.ingestion.adapters import BaseJobAdapter, get_job_adapter
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.normalization import normalize_job_draft
-from job_pilot.modules.ingestion.normalization.skills import (
-    build_skill_content_hash,
-    extract_raw_skill_candidates,
-)
 from job_pilot.modules.ingestion.repository import (
     RawJobIngestionRepository,
     RawRecordIngestionAction,
+)
+from job_pilot.modules.job_skills.normalization import (
+    build_skill_content_hash,
+    extract_raw_skill_candidates,
 )
 from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
 
@@ -81,7 +81,10 @@ class RawJobIngestionService:
         )
         raw_record = raw_record_result.raw_record
 
-        if raw_record_result.action != RawRecordIngestionAction.PROCESS:
+        if raw_record_result.action not in {
+            RawRecordIngestionAction.PROCESS,
+            RawRecordIngestionAction.RETRY_PROCESS,
+        }:
             job_post_id = await self.repository.get_job_post_id_by_raw_record(
                 db=session,
                 raw_record_id=raw_record.id,
@@ -96,7 +99,6 @@ class RawJobIngestionService:
                     "action": raw_record_result.action,
                 },
             )
-            await session.commit()
             return RawJobIngestionResult(
                 raw_record_id=raw_record.id,
                 job_post_id=job_post_id,
@@ -123,19 +125,18 @@ class RawJobIngestionService:
                 job_post_id=job_post.id,
                 normalized=normalized,
             )
+            # TODO：filter-options 缓存后续改为后台刷新或在岗位写入成功后统一失效。
             await self.repository.mark_raw_record_normalized(
                 db=session,
                 raw_record=raw_record,
                 skill_content_hash=skill_content_hash,
             )
-            await session.commit()
         except AppError as exc:
             await self.repository.mark_raw_record_failed(
                 db=session,
                 raw_record=raw_record,
                 error_message=exc.message,
             )
-            await session.commit()
             logger.warning(
                 "Raw job message failed business validation",
                 extra={
@@ -153,7 +154,6 @@ class RawJobIngestionService:
                 raw_record=raw_record,
                 error_message=str(exc),
             )
-            await session.commit()
             logger.exception(
                 "Raw job message failed during normalization",
                 extra={
@@ -169,7 +169,7 @@ class RawJobIngestionService:
             raw_record_id=raw_record.id,
             job_post_id=job_post.id,
             created_job_post=created_job_post_flag,
-            action=RawRecordIngestionAction.PROCESS,
+            action=raw_record_result.action,
             raw_skill_candidates=raw_skill_candidates,
             skill_content_hash=skill_content_hash,
         )

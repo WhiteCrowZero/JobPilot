@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
-
-from job_pilot.core.config import Settings
-
-# TODO：仍需要完善MQ的抽象和构建，阶段7处理
 
 
 class DomainEvent(BaseModel):
@@ -30,29 +25,6 @@ class MessageQueue(Protocol):
     async def health_check(self) -> bool: ...
 
     async def close(self) -> None: ...
-
-
-class MemoryMessageQueue:
-    """测试/本地学习用消息队列，只在当前 Python 进程内有效。"""
-
-    def __init__(self) -> None:
-        self._queue: asyncio.Queue[DomainEvent] = asyncio.Queue()
-
-    async def publish(self, event: DomainEvent) -> None:
-        await self._queue.put(event)
-
-    async def consume(self, timeout_seconds: int = 1) -> DomainEvent | None:
-        try:
-            return await asyncio.wait_for(self._queue.get(), timeout=timeout_seconds)
-        except TimeoutError:
-            return None
-
-    async def health_check(self) -> bool:
-        return True
-
-    async def close(self) -> None:
-        while not self._queue.empty():
-            self._queue.get_nowait()
 
 
 class RedisListMessageQueue:
@@ -87,14 +59,16 @@ class RedisListMessageQueue:
         await self._redis.aclose()
 
 
-def build_message_queue(
-    settings: Settings,
-    *,
-    backend: Literal["memory", "redis"] | None = None,
-) -> MessageQueue:
-    """Build a simple queue abstraction for future async event experiments."""
+class NullMessageQueue(MessageQueue):
+    async def publish(self, event: DomainEvent) -> None:
+        _ = event
 
-    selected_backend = backend or ("memory" if settings.is_test else "redis")
-    if selected_backend == "memory":
-        return MemoryMessageQueue()
-    return RedisListMessageQueue(settings.REDIS_URL, queue_name="jobpilot:events")
+    async def consume(self, timeout_seconds: int = 1) -> DomainEvent | None:
+        _ = timeout_seconds
+        return None
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self) -> None:
+        pass

@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
 from redis.asyncio import Redis
 
 from job_pilot.core.cache import CacheStore, DistributedLock, RedisCacheStore, RedisDistributedLock
 from job_pilot.core.config import Settings
 from job_pilot.core.exceptions import ResourceUnavailableError
-from job_pilot.core.message_queue import MessageQueue, build_message_queue
+from job_pilot.core.message_queue import (
+    MessageQueue,
+    NullMessageQueue,
+)
+from job_pilot.core.search import NullSearchBackend, SearchBackend
 from job_pilot.db.session import DatabaseResource, build_database_resource
+
+# TODO: 第七阶段处理 MQ ES
 
 
 class HealthCheckable(Protocol):
@@ -24,8 +30,8 @@ class ResourceSpec:
     redis: bool = True
     cache: bool = True
     lock: bool = True
+    search: bool = True
     message_queue: bool = True
-    message_queue_backend: Literal["memory", "redis"] | None = None
 
 
 @dataclass(slots=True)
@@ -39,6 +45,7 @@ class AppResources:
     cache: CacheStore | None = None
     lock: DistributedLock | None = None
     redis_client: Redis | None = None
+    search_backend: SearchBackend | None = None
     message_queue: MessageQueue | None = None
 
     async def health_check(self) -> dict[str, bool]:
@@ -48,6 +55,8 @@ class AppResources:
             result["database"] = await self._check_health(self.database)
         if self.redis_client is not None:
             result["redis"] = await self._check_redis(self.redis_client)
+        if self.search_backend is not None:
+            result["search_backend"] = await self._check_health(self.search_backend)
         if self.message_queue is not None:
             result["message_queue"] = await self._check_health(self.message_queue)
 
@@ -58,6 +67,8 @@ class AppResources:
             await self.message_queue.close()
         if self.redis_client is not None:
             await self.redis_client.aclose()
+        if self.search_backend is not None:
+            await self.search_backend.close()
         if self.database is not None:
             await self.database.close()
 
@@ -93,6 +104,14 @@ class AppResources:
             )
         return self.redis_client
 
+    def require_search_backend(self) -> SearchBackend:
+        if self.search_backend is None:
+            raise ResourceUnavailableError(
+                "SearchBackend resource is not configured",
+                code="SEARCHBACKEND_RESOURCE_UNAVAILABLE",
+            )
+        return self.search_backend
+
     def require_message_queue(self) -> MessageQueue:
         if self.message_queue is None:
             raise ResourceUnavailableError(
@@ -126,6 +145,7 @@ def build_app_resources(
     selected_spec = spec or ResourceSpec()
 
     database = build_database_resource(settings) if selected_spec.database else None
+
     redis_needed = selected_spec.redis or selected_spec.cache or selected_spec.lock
     redis_client = (
         Redis.from_url(
@@ -146,17 +166,16 @@ def build_app_resources(
     if selected_spec.lock:
         redis_for_lock = _require_built_redis(redis_client, "lock")
         lock = RedisDistributedLock(redis_for_lock)
-    message_queue = (
-        build_message_queue(settings, backend=selected_spec.message_queue_backend)
-        if selected_spec.message_queue
-        else None
-    )
+
+    search_backend = NullSearchBackend() if selected_spec.search else None
+    message_queue = NullMessageQueue() if selected_spec.message_queue else None
 
     return AppResources(
         database=database,
         cache=cache,
         lock=lock,
         redis_client=redis_client,
+        search_backend=search_backend,
         message_queue=message_queue,
     )
 
@@ -170,6 +189,7 @@ def build_database_only_resources(settings: Settings) -> AppResources:
             redis=False,
             cache=False,
             lock=False,
+            search=False,
             message_queue=False,
         ),
     )

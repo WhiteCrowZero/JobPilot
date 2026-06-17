@@ -7,7 +7,6 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 os.environ.setdefault("APP_ENV", "test")
@@ -15,6 +14,7 @@ os.environ.setdefault("APP_ENV", "test")
 from job_pilot.core.config import settings  # noqa: E402
 from job_pilot.core.resources import AppResources, build_app_resources  # noqa: E402
 from job_pilot.main import create_app  # noqa: E402
+from tests.helpers.database import truncate_auth_user_tables  # noqa: E402
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -41,22 +41,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 @pytest.fixture
 def sample_user_id() -> int:
     return 1
-
-
-async def truncate_auth_user_tables(session: AsyncSession) -> None:
-    await session.execute(
-        text(
-            """
-            TRUNCATE TABLE
-                auth_password_credentials,
-                auth_identities,
-                user_profiles,
-                users
-            RESTART IDENTITY CASCADE
-            """
-        )
-    )
-    await session.commit()
 
 
 @pytest_asyncio.fixture
