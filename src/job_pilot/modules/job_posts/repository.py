@@ -7,11 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from job_pilot.core.search.backend import SearchBackend
-from job_pilot.core.search.search_tools import (
+from job_pilot.core.search import (
+    SearchBackend,
+    SortMap,
+    apply_sort_by_key,
     clean_optional_int_list,
     clean_optional_list,
     clean_optional_text,
+    fetch_page_ids,
+    order_entities_by_ids,
 )
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import JobPostStatus
@@ -21,6 +25,33 @@ from job_pilot.modules.job_posts.models import (
     JobSource,
 )
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
+
+JOB_POST_SORTS: SortMap = {
+    "published_at_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.published_at.desc().nulls_last(), JobPost.id.desc()),
+    ),
+    "published_at_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.published_at.asc().nulls_last(), JobPost.id.asc()),
+    ),
+    "created_at_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.created_at.desc(), JobPost.id.desc()),
+    ),
+    "created_at_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.created_at.asc(), JobPost.id.asc()),
+    ),
+    "salary_max_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.salary_max.desc().nulls_last(), JobPost.id.desc()),
+    ),
+    "salary_min_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.salary_min.asc().nulls_last(), JobPost.id.asc()),
+    ),
+}
 
 
 class JobPostRepository:
@@ -40,26 +71,27 @@ class JobPostRepository:
         params: JobPostSearchQuery,
     ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
-
-        page_id_stmt = (
-            self._apply_sort(base_stmt, params).offset(params.offset).limit(params.limit + 1)
+        sorted_stmt = self._apply_sort(base_stmt, params)
+        job_post_ids = await fetch_page_ids(
+            db,
+            sorted_stmt,
+            offset=params.offset,
+            limit=params.limit,
         )
-        id_result = await db.execute(page_id_stmt)
-        job_post_ids = list(id_result.scalars().all())
         if not job_post_ids:
             return []
 
         entity_stmt = (
             select(JobPost)
             .where(JobPost.id.in_(job_post_ids))
-            .options(
-                selectinload(JobPost.source),
-                selectinload(JobPost.detail),
-            )
+            .options(selectinload(JobPost.source))
         )
         entity_result = await db.execute(entity_stmt)
-        job_posts_by_id = {job_post.id: job_post for job_post in entity_result.scalars().all()}
-        return [job_posts_by_id[job_post_id] for job_post_id in job_post_ids]
+        return order_entities_by_ids(
+            job_post_ids,
+            entity_result.scalars().all(),
+            get_id=lambda job_post: job_post.id,
+        )
 
     async def get_job_post_detail(
         self,
@@ -86,10 +118,10 @@ class JobPostRepository:
         stmt = select(JobPost.id).join(JobPost.source)
         conditions: list[ColumnElement[bool]] = [JobPost.deleted_at.is_(None)]
 
-        if params.statuses:
-            conditions.append(JobPost.status.in_(params.statuses))
-        elif not params.include_closed:
+        if params.statuses is None:
             conditions.append(JobPost.status == JobPostStatus.OPEN)
+        else:
+            conditions.append(JobPost.status.in_(params.statuses))
 
         if params.source_platforms:
             conditions.append(JobSource.platform.in_(params.source_platforms))
@@ -181,19 +213,12 @@ class JobPostRepository:
         params: JobPostSearchQuery,
     ) -> Select[tuple[int]]:
         # 排序字段必须白名单控制，不允许前端直接传数据库字段名。
-        match params.sort:
-            case "published_at_asc":
-                return stmt.order_by(JobPost.published_at.asc().nulls_last(), JobPost.id.asc())
-            case "created_at_desc":
-                return stmt.order_by(JobPost.created_at.desc(), JobPost.id.desc())
-            case "created_at_asc":
-                return stmt.order_by(JobPost.created_at.asc(), JobPost.id.asc())
-            case "salary_max_desc":
-                return stmt.order_by(JobPost.salary_max.desc().nulls_last(), JobPost.id.desc())
-            case "salary_min_asc":
-                return stmt.order_by(JobPost.salary_min.asc().nulls_last(), JobPost.id.asc())
-            case _:
-                return stmt.order_by(JobPost.published_at.desc().nulls_last(), JobPost.id.desc())
+        return apply_sort_by_key(
+            stmt,
+            sort_key=params.sort,
+            sort_map=JOB_POST_SORTS,
+            error_label="job post",
+        )
 
 
 class JobPostLookupRepository:

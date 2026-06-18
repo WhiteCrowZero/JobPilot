@@ -8,8 +8,8 @@ from job_pilot.core.resources import AppResources
 from job_pilot.modules.knowledge.contracts import KnowledgePointSearchQuery, KnowledgeTreeQuery
 from job_pilot.modules.knowledge.enums import KnowledgePointLevel, KnowledgePointStatus
 from job_pilot.modules.knowledge.exceptions import KnowledgeTreeScopeMismatchError
+from job_pilot.modules.knowledge.knowledge_tree.tree_cache import KNOWLEDGE_TREE_CACHE_PREFIX
 from job_pilot.modules.knowledge.models import KnowledgePoint
-from job_pilot.modules.knowledge.service import KNOWLEDGE_TREE_CACHE_PREFIX
 from tests.helpers.builders import seed_test_skill
 from tests.helpers.cache import MemoryCacheStore
 from tests.helpers.database import truncate_knowledge_tables

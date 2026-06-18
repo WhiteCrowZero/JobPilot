@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +10,10 @@ from job_pilot.application import JobPilot
 from job_pilot.core.search import SqlLikeSearchBackend
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.service import JobSourceConfig
-from job_pilot.modules.job_posts.contracts import JobPostSearchQuery as JobPostSearchParams
+from job_pilot.modules.job_posts.contracts import (
+    JobPostSearchQuery as JobPostSearchParams,
+)
+from job_pilot.modules.job_posts.contracts import JobPostSort
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import JobPost
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
@@ -97,7 +102,6 @@ async def test_search_job_posts_supports_remote_and_status_filters(
         closed_response = await pilot.job_posts.search(
             JobPostSearchParams(
                 statuses=[JobPostStatus.CLOSED],
-                include_closed=True,
                 page=1,
                 page_size=20,
             )
@@ -109,6 +113,35 @@ async def test_search_job_posts_supports_remote_and_status_filters(
         assert remote_response.items[0].is_remote is True
         assert len(closed_response.items) == 1
         assert closed_response.items[0].status == JobPostStatus.CLOSED
+    finally:
+        await truncate_job_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_search_job_posts_supports_all_sort_keys(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """岗位搜索显式支持全部排序白名单。"""
+
+    await seed_job_posts(pilot=pilot, session=db_session)
+
+    try:
+        sort_expectations = {
+            "published_at_desc": ["Backend Engineer", "后端开发工程师"],
+            "published_at_asc": ["后端开发工程师", "Backend Engineer"],
+            "created_at_desc": ["Backend Engineer", "后端开发工程师"],
+            "created_at_asc": ["后端开发工程师", "Backend Engineer"],
+            "salary_max_desc": ["Backend Engineer", "后端开发工程师"],
+            "salary_min_asc": ["后端开发工程师", "Backend Engineer"],
+        }
+
+        for sort_key, expected_titles in sort_expectations.items():
+            response = await pilot.job_posts.search(
+                JobPostSearchParams(sort=cast(JobPostSort, sort_key), page=1, page_size=20)
+            )
+
+            assert [item.title for item in response.items] == expected_titles
     finally:
         await truncate_job_tables(db_session)
 

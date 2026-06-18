@@ -7,7 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from job_pilot.core.search import SearchBackend
+from job_pilot.core.search import (
+    SearchBackend,
+    apply_sort_by_key,
+    clean_optional_int_list,
+    clean_optional_list,
+    clean_optional_text,
+    fetch_page_ids,
+    order_entities_by_ids,
+)
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import (
@@ -15,6 +23,7 @@ from job_pilot.modules.job_posts.models import (
     JobPostDetail,
     JobSource,
 )
+from job_pilot.modules.job_posts.repository import JOB_POST_SORTS
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 
 
@@ -35,12 +44,13 @@ class QuestionRepository:
         params: JobPostSearchQuery,
     ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
-
-        page_id_stmt = (
-            self._apply_sort(base_stmt, params).offset(params.offset).limit(params.limit + 1)
+        sorted_stmt = self._apply_sort(base_stmt, params)
+        job_post_ids = await fetch_page_ids(
+            db,
+            sorted_stmt,
+            offset=params.offset,
+            limit=params.limit,
         )
-        id_result = await db.execute(page_id_stmt)
-        job_post_ids = list(id_result.scalars().all())
         if not job_post_ids:
             return []
 
@@ -53,8 +63,11 @@ class QuestionRepository:
             )
         )
         entity_result = await db.execute(entity_stmt)
-        job_posts_by_id = {job_post.id: job_post for job_post in entity_result.scalars().all()}
-        return [job_posts_by_id[job_post_id] for job_post_id in job_post_ids]
+        return order_entities_by_ids(
+            job_post_ids,
+            entity_result.scalars().all(),
+            get_id=lambda job_post: job_post.id,
+        )
 
     async def get_job_post_detail(
         self,
@@ -81,10 +94,10 @@ class QuestionRepository:
         stmt = select(JobPost.id).join(JobPost.source)
         conditions: list[ColumnElement[bool]] = [JobPost.deleted_at.is_(None)]
 
-        if params.statuses:
-            conditions.append(JobPost.status.in_(params.statuses))
-        elif not params.include_closed:
+        if params.statuses is None:
             conditions.append(JobPost.status == JobPostStatus.OPEN)
+        else:
+            conditions.append(JobPost.status.in_(params.statuses))
 
         if params.source_platforms:
             conditions.append(JobSource.platform.in_(params.source_platforms))
@@ -128,8 +141,7 @@ class QuestionRepository:
         if params.seen_to is not None:
             conditions.append(JobPost.last_seen_at <= params.seen_to)
 
-        # TODO: ES
-        keyword = _clean_optional_text(params.keyword)
+        keyword = clean_optional_text(params.keyword)
         if keyword is not None:
             detail_exists = cast(
                 ColumnElement[bool],
@@ -153,13 +165,13 @@ class QuestionRepository:
             )
             conditions.append(keyword_condition)
 
-        location_keywords = _clean_optional_list(params.locations)
+        location_keywords = clean_optional_list(params.locations)
         if location_keywords:
             conditions.append(
                 self.search_backend.contains_any_text(JobPost.locations, location_keywords)
             )
 
-        skill_ids = _clean_optional_int_list(params.skill_ids)
+        skill_ids = clean_optional_int_list(params.skill_ids)
         if skill_ids:
             matched_job_ids = (
                 select(JobPostSkill.job_post_id)
@@ -177,19 +189,12 @@ class QuestionRepository:
         params: JobPostSearchQuery,
     ) -> Select[tuple[int]]:
         # 排序字段必须白名单控制，不允许前端直接传数据库字段名。
-        match params.sort:
-            case "published_at_asc":
-                return stmt.order_by(JobPost.published_at.asc().nulls_last(), JobPost.id.asc())
-            case "created_at_desc":
-                return stmt.order_by(JobPost.created_at.desc(), JobPost.id.desc())
-            case "created_at_asc":
-                return stmt.order_by(JobPost.created_at.asc(), JobPost.id.asc())
-            case "salary_max_desc":
-                return stmt.order_by(JobPost.salary_max.desc().nulls_last(), JobPost.id.desc())
-            case "salary_min_asc":
-                return stmt.order_by(JobPost.salary_min.asc().nulls_last(), JobPost.id.asc())
-            case _:
-                return stmt.order_by(JobPost.published_at.desc().nulls_last(), JobPost.id.desc())
+        return apply_sort_by_key(
+            stmt,
+            sort_key=params.sort,
+            sort_map=JOB_POST_SORTS,
+            error_label="job post",
+        )
 
 
 class JobPostLookupRepository:
@@ -239,23 +244,3 @@ class JobPostLookupRepository:
             JobPost.deleted_at.is_(None),
             JobPost.status == JobPostStatus.OPEN,
         ]
-
-
-def _clean_optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned_value = value.strip()
-    return cleaned_value or None
-
-
-def _clean_optional_list(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-    cleaned_values = [value.strip() for value in values if value.strip()]
-    return list(dict.fromkeys(cleaned_values))
-
-
-def _clean_optional_int_list(values: list[int] | None) -> list[int]:
-    if not values:
-        return []
-    return list(dict.fromkeys(value for value in values if value > 0))

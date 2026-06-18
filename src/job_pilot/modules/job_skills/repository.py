@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.exceptions import BadRequestError
-from job_pilot.core.search.backend import SearchBackend
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.models import JobPost
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill, SkillAlias
 from job_pilot.modules.job_skills.skill_sync_contracts import SkillAliasMatch

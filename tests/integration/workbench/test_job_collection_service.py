@@ -354,17 +354,12 @@ async def test_update_remove_and_list_collections_are_user_isolated(
             user_id=owner.id,
             params=JobCollectionListParams(page=1, page_size=10),
         )
-        removed_list = await pilot.workbench.list_collections(
-            user_id=owner.id,
-            params=JobCollectionListParams(include_removed=True, page=1, page_size=10),
-        )
 
         assert updated.note == "High priority"
         assert updated.folder_id == default_folder.id
         assert filtered.items == []
         assert removed.status == JobCollectionStatus.REMOVED
         assert [item.job_post_id for item in active_list.items] == [data_job.id]
-        assert {item.job_post_id for item in removed_list.items} == {backend_job.id, data_job.id}
 
         with pytest.raises(JobCollectionNotFoundError):
             await pilot.workbench.update_collection(

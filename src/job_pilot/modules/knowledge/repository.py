@@ -1,18 +1,35 @@
 from __future__ import annotations
 
-from sqlalchemy import (
-    Select,
-    and_,
-    select,
-)
+from typing import cast
+
+from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from job_pilot.core.search.backend import SearchBackend
-from job_pilot.core.search.search_tools import clean_optional_text
+from job_pilot.core.search import (
+    SearchBackend,
+    SortMap,
+    apply_sort_by_key,
+    clean_optional_text,
+    fetch_offset_page,
+)
 from job_pilot.modules.knowledge.contracts import KnowledgePointSearchQuery
 from job_pilot.modules.knowledge.enums import KnowledgePointStatus
 from job_pilot.modules.knowledge.models import KnowledgePoint
+
+KNOWLEDGE_POINT_DEFAULT_SORT = "directory"
+KNOWLEDGE_POINT_SORTS: SortMap = {
+    KNOWLEDGE_POINT_DEFAULT_SORT: lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (
+            KnowledgePoint.skill_id.asc(),
+            KnowledgePoint.depth.asc(),
+            KnowledgePoint.parent_id.asc().nulls_first(),
+            KnowledgePoint.sort_order.asc(),
+            KnowledgePoint.id.asc(),
+        ),
+    ),
+}
 
 
 class KnowledgeRepository:
@@ -30,9 +47,13 @@ class KnowledgeRepository:
         """按条件查询知识点列表，多取一条用于判断 has_next。"""
 
         stmt = self._build_knowledge_points_stmt(params)
-        stmt = self._apply_default_order(stmt).offset(params.offset).limit(params.limit + 1)
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        stmt = self._apply_default_order(stmt)
+        return await fetch_offset_page(
+            db,
+            stmt,
+            offset=params.offset,
+            limit=params.limit,
+        )
 
     async def get_knowledge_point(
         self,
@@ -106,10 +127,9 @@ class KnowledgeRepository:
     ) -> Select[tuple[KnowledgePoint]]:
         """按知识点目录顺序返回列表。"""
 
-        return stmt.order_by(
-            KnowledgePoint.skill_id.asc(),
-            KnowledgePoint.depth.asc(),
-            KnowledgePoint.parent_id.asc().nulls_first(),
-            KnowledgePoint.sort_order.asc(),
-            KnowledgePoint.id.asc(),
+        return apply_sort_by_key(
+            stmt,
+            sort_key=KNOWLEDGE_POINT_DEFAULT_SORT,
+            sort_map=KNOWLEDGE_POINT_SORTS,
+            error_label="knowledge point",
         )

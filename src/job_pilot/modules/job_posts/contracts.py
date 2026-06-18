@@ -47,4 +47,3 @@ class JobPostSearchQuery(PageQuery):
     seen_from: datetime | None = None
     seen_to: datetime | None = None
     sort: JobPostSort = "published_at_desc"
-    include_closed: bool = False

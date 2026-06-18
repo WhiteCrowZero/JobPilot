@@ -57,7 +57,6 @@ class JobCollectionUpdate(BaseModel):
 class JobCollectionListParams(PageParams):
     """岗位收藏列表查询参数。"""
 
-    include_removed: bool = False
     folder_id: int | None = Field(default=None, gt=0)
 
 

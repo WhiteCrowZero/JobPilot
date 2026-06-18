@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from job_pilot.core.search.backend import SearchBackend
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.questions.repository import QuestionRepository
 
 logger = logging.getLogger(__name__)

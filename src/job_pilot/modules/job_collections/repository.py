@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.core.search import fetch_offset_page
 from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_collections.contracts import JobCollectionListQuery
 from job_pilot.modules.job_collections.enums import (
@@ -250,21 +251,24 @@ class JobCollectionRepository:
     ) -> list[JobCollection]:
         """分页读取当前用户岗位收藏。"""
 
-        conditions: list[ColumnElement[bool]] = [JobCollection.user_id == user_id]
+        conditions: list[ColumnElement[bool]] = [
+            JobCollection.user_id == user_id,
+            JobCollection.status == JobCollectionStatus.ACTIVE,
+        ]
         if params.folder_id is not None:
             conditions.append(JobCollection.folder_id == params.folder_id)
-        if not params.include_removed:
-            conditions.append(JobCollection.status == JobCollectionStatus.ACTIVE)
 
         stmt = (
             select(JobCollection)
             .where(*conditions)
             .order_by(JobCollection.collected_at.desc(), JobCollection.id.desc())
-            .offset(params.offset)
-            .limit(params.limit + 1)
         )
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return await fetch_offset_page(
+            db,
+            stmt,
+            offset=params.offset,
+            limit=params.limit,
+        )
 
     async def upsert_active_collection(
         self,

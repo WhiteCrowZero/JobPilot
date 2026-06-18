@@ -129,7 +129,6 @@ async def list_collections(
     """查询当前用户岗位收藏。"""
 
     query = JobCollectionListQuery(
-        include_removed=params.include_removed,
         folder_id=params.folder_id,
         page=params.page,
         page_size=params.page_size,
