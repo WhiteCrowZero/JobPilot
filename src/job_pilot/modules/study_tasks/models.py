@@ -267,9 +267,7 @@ class StudyTaskProgress(TimestampMixin, Base):
             "practiced_count >= 0", name="ck_study_task_progress_practiced_non_negative"
         ),
         CheckConstraint(
-            "correct_count >= 0 "
-            "AND incorrect_count >= 0 "
-            "AND skipped_count >= 0",
+            "correct_count >= 0 AND incorrect_count >= 0 AND skipped_count >= 0",
             name="ck_study_task_progress_result_counts_non_negative",
         ),
         CheckConstraint(

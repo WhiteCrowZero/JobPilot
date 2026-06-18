@@ -88,3 +88,21 @@ async def truncate_job_tables(session: AsyncSession) -> None:
         )
     )
     await session.commit()
+
+
+async def truncate_knowledge_tables(session: AsyncSession) -> None:
+    """清理知识点树和技能字典相关测试数据。"""
+
+    await session.rollback()
+    await session.execute(
+        text(
+            """
+            TRUNCATE TABLE
+                knowledge_points,
+                skill_aliases,
+                skills
+            RESTART IDENTITY CASCADE
+            """
+        )
+    )
+    await session.commit()

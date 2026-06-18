@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -14,6 +15,8 @@ from job_pilot.core.config import Settings
 # 标记由本项目日志配置创建的 handler。
 # 重复配置时只清理这些 handler，避免误删测试或外部工具临时挂载的 handler。
 _MANAGED_HANDLER_ATTR = "_jobpilot_managed_handler"
+APP_LOG_LEVEL = 25
+logging.addLevelName(APP_LOG_LEVEL, "APP")
 
 # logging.LogRecord 自带字段不应该重复放入 extra。
 _RESERVED_LOG_RECORD_FIELDS = set(
@@ -31,6 +34,7 @@ _RESERVED_LOG_RECORD_FIELDS = set(
 _LEVEL_COLORS = {
     logging.DEBUG: "\033[36m",
     logging.INFO: "\033[32m",
+    APP_LOG_LEVEL: "\033[34m",
     logging.WARNING: "\033[33m",
     logging.ERROR: "\033[31m",
     logging.CRITICAL: "\033[35m",
@@ -144,17 +148,48 @@ class ConsoleLogFormatter(logging.Formatter):
 class LevelRangeFilter(logging.Filter):
     """只允许指定等级范围内的日志进入某个 handler。"""
 
-    def __init__(self, *, min_level: int, max_level: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        min_level: int,
+        max_level: int | None = None,
+        excluded_levels: set[int] | None = None,
+    ) -> None:
         super().__init__()
         self.min_level = min_level
         self.max_level = max_level
+        self.excluded_levels = excluded_levels or set()
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno in self.excluded_levels:
+            return False
         if record.levelno < self.min_level:
             return False
         if self.max_level is not None and record.levelno > self.max_level:
             return False
         return True
+
+
+class ExactLevelFilter(logging.Filter):
+    """只允许指定等级的日志进入某个 handler。"""
+
+    def __init__(self, level: int) -> None:
+        super().__init__()
+        self.level = level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno == self.level
+
+
+def log_app_event(
+    logger: logging.Logger,
+    message: str,
+    *args: object,
+    extra: Mapping[str, object] | None = None,
+) -> None:
+    """记录业务事件，避免和系统 INFO 日志混在一起。"""
+
+    logger.log(APP_LOG_LEVEL, message, *args, extra=dict(extra or {}), stacklevel=2)
 
 
 def configure_logging(
@@ -165,9 +200,10 @@ def configure_logging(
 ) -> None:
     """配置 JobPilot 日志。
 
-    Web 进程默认只配置 `job_pilot` logger，并关闭 uvicorn/starlette 等框架日志，
-    避免 FastAPI 启动日志、access log 和业务日志同时输出；脚本或 worker 可以设置
-    configure_root=True，用同一套 handler 接管当前进程日志。
+    `APP` 记录业务事件，`INFO` 记录系统生命周期和基础运行信息，`ERROR`
+    记录错误。Web 进程默认只配置 `job_pilot` logger，并关闭 uvicorn/starlette
+    等框架日志；脚本或 worker 可以设置 configure_root=True，用同一套 handler
+    接管当前进程日志。
     """
 
     base_log_level = _parse_log_level(settings.LOG_LEVEL)
@@ -210,13 +246,14 @@ def configure_logging(
         log_dir = Path(settings.LOG_DIR) / service
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        all_handler = _build_file_handler(
-            log_dir / f"{service}.jsonl",
-            level=file_log_level,
+        app_handler = _build_file_handler(
+            log_dir / "app.jsonl",
+            level=max(APP_LOG_LEVEL, file_log_level),
             formatter=file_formatter,
             settings=settings,
         )
-        target_logger.addHandler(all_handler)
+        app_handler.addFilter(ExactLevelFilter(APP_LOG_LEVEL))
+        target_logger.addHandler(app_handler)
 
         info_handler = _build_file_handler(
             log_dir / "info.jsonl",
@@ -224,7 +261,13 @@ def configure_logging(
             formatter=file_formatter,
             settings=settings,
         )
-        info_handler.addFilter(LevelRangeFilter(min_level=logging.INFO, max_level=logging.WARNING))
+        info_handler.addFilter(
+            LevelRangeFilter(
+                min_level=logging.INFO,
+                max_level=logging.WARNING,
+                excluded_levels={APP_LOG_LEVEL},
+            )
+        )
         target_logger.addHandler(info_handler)
 
         error_handler = _build_file_handler(

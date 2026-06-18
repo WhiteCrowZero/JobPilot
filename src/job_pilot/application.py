@@ -55,6 +55,11 @@ from job_pilot.modules.job_targets.schemas import (
     JobTargetResponse,
 )
 from job_pilot.modules.job_targets.service import JobTargetService, build_job_target_service
+from job_pilot.modules.knowledge.contracts import KnowledgeTreeQuery
+from job_pilot.modules.knowledge.schemas import (
+    KnowledgeTreeListResponse,
+)
+from job_pilot.modules.knowledge.service import KnowledgeService, build_knowledge_service
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
     UserSkillUpdateCommand,
@@ -535,6 +540,25 @@ class JobPilotIngestionApi:
 
 
 @dataclass(slots=True)
+class JobPilotLearningApi:
+    """用户工作台公开入口，聚合收藏、目标岗位、技能画像和匹配分析。"""
+
+    resources: AppResources
+    uow_factory: UnitOfWorkFactory
+    knowledge_service: KnowledgeService
+
+    async def get_knowledge_tree(self, params: KnowledgeTreeQuery) -> KnowledgeTreeListResponse:
+        """读取知识点树。"""
+
+        async with self.uow_factory() as uow:
+            return await self.knowledge_service.get_knowledge_trees(
+                uow.require_session(),
+                params=params,
+                cache=self.resources.require_cache(),
+            )
+
+
+@dataclass(slots=True)
 class JobPilot:
     """JobPilot 作为库使用时的公开业务入口。"""
 
@@ -543,6 +567,7 @@ class JobPilot:
     skills: JobPilotSkillApi
     workbench: JobPilotWorkbenchApi
     ingestion: JobPilotIngestionApi
+    learning: JobPilotLearningApi
 
 
 def build_job_pilot(resources: AppResources) -> JobPilot:
@@ -574,4 +599,9 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
             match_service=build_job_match_service(),
         ),
         ingestion=JobPilotIngestionApi(uow_factory=uow_factory),
+        learning=JobPilotLearningApi(
+            resources=resources,
+            uow_factory=uow_factory,
+            knowledge_service=build_knowledge_service(),
+        ),
     )

@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
-from job_pilot.core.pagination import PageParams
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
     UserSkillUpdateCommand,
     UserSkillUpsertCommand,
 )
 from job_pilot.modules.user_skills.schemas import (
+    UserSkillListParams,
     UserSkillListResponse,
     UserSkillResponse,
     UserSkillUpdate,
@@ -49,21 +49,19 @@ async def upsert_user_skill(
 async def list_user_skills(
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
-    pagination: Annotated[PageParams, Depends()],
-    include_archived: bool = False,
-    skill_ids: Annotated[list[int] | None, Query()] = None,
+    params: Annotated[UserSkillListParams, Query()],
 ) -> UserSkillListResponse:
     """查询当前用户技能画像列表。"""
 
-    params = UserSkillListQuery(
-        include_archived=include_archived,
-        skill_ids=skill_ids,
-        page=pagination.page,
-        page_size=pagination.page_size,
+    query = UserSkillListQuery(
+        include_archived=params.include_archived,
+        skill_ids=params.skill_ids,
+        page=params.page,
+        page_size=params.page_size,
     )
     return await pilot.workbench.list_user_skills(
         user_id=current_user.id,
-        params=params,
+        params=query,
     )
 
 

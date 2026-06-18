@@ -29,7 +29,7 @@ IMPORT_SOURCE = "all"
 # IMPORT_SOURCE = "jaabz"
 
 # 每个来源表导入多少条数据
-IMPORT_LIMIT = 1
+IMPORT_LIMIT = 100
 
 # 来源 MySQL 数据库地址
 SOURCE_MYSQL_URL = os.getenv("JOBPILOT_SOURCE_MYSQL_URL", DEFAULT_MYSQL_URL)
@@ -331,7 +331,7 @@ def _text_or_none(value: object | None) -> str | None:
 # =============================================================================
 # 后续岗位技能同步说明
 # =============================================================================
-# 当前 seed_jobs.py 只负责事务 1：导入 raw_job_records、job_posts、job_post_details。
+# 当前 seed_job_samples.py 只负责事务 1：导入 raw_job_records、job_posts、job_post_details。
 # 岗位技能同步会在后续独立 worker / 编排层实现，不放进这个导入脚本。
 #
 # 后续 worker 需要完成：

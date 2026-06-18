@@ -24,7 +24,6 @@ from job_pilot.modules.knowledge.enums import (
 if TYPE_CHECKING:
     from job_pilot.modules.job_skills.models import Skill
     from job_pilot.modules.questions.models import QuestionSkill
-    from job_pilot.modules.users.models import User
 
 
 class KnowledgePoint(TimestampMixin, Base):
@@ -116,19 +115,6 @@ class KnowledgePoint(TimestampMixin, Base):
         comment="知识点状态。",
     )
 
-    source_note: Mapped[str | None] = mapped_column(
-        String(300),
-        nullable=True,
-        comment="来源补充说明，不保存外部资料正文。",
-    )
-
-    created_by_user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="用户补充内容的创建者 ID，官方可为空。",
-    )
-
     skill: Mapped[Skill] = relationship(
         back_populates="knowledge_points",
     )
@@ -140,10 +126,6 @@ class KnowledgePoint(TimestampMixin, Base):
 
     children: Mapped[list[KnowledgePoint]] = relationship(
         back_populates="parent",
-    )
-
-    created_by_user: Mapped[User | None] = relationship(
-        foreign_keys=[created_by_user_id],
     )
 
     question_links: Mapped[list[QuestionSkill]] = relationship(

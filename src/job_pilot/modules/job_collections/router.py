@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
-from job_pilot.core.pagination import PageParams
 from job_pilot.modules.job_collections.contracts import (
     JobCollectionCreateCommand,
     JobCollectionFolderCreateCommand,
@@ -18,6 +17,7 @@ from job_pilot.modules.job_collections.schemas import (
     JobCollectionFolderCreate,
     JobCollectionFolderResponse,
     JobCollectionFolderUpdate,
+    JobCollectionListParams,
     JobCollectionListResponse,
     JobCollectionResponse,
     JobCollectionUpdate,
@@ -124,21 +124,19 @@ async def collect_job(
 async def list_collections(
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
-    pagination: Annotated[PageParams, Depends()],
-    include_removed: bool = False,
-    folder_id: int | None = None,
+    params: Annotated[JobCollectionListParams, Query()],
 ) -> JobCollectionListResponse:
     """查询当前用户岗位收藏。"""
 
-    params = JobCollectionListQuery(
-        include_removed=include_removed,
-        folder_id=folder_id,
-        page=pagination.page,
-        page_size=pagination.page_size,
+    query = JobCollectionListQuery(
+        include_removed=params.include_removed,
+        folder_id=params.folder_id,
+        page=params.page,
+        page_size=params.page_size,
     )
     return await pilot.workbench.list_collections(
         user_id=current_user.id,
-        params=params,
+        params=query,
     )
 
 

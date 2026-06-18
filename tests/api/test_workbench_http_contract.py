@@ -10,10 +10,30 @@ from tests.api.endpoints import (
     AUTH_REGISTER_EMAIL_ENDPOINT,
     JOB_COLLECTION_FOLDERS_ENDPOINT,
     JOB_COLLECTIONS_ENDPOINT,
+    JOB_TARGETS_ENDPOINT,
     USER_SKILLS_ENDPOINT,
     job_match_job_coverage_endpoint,
     job_match_target_skills_endpoint,
 )
+
+
+async def register_test_user_headers(
+    api_client: httpx.AsyncClient,
+    *,
+    prefix: str,
+) -> dict[str, str]:
+    """注册测试用户并返回 bearer token 请求头。"""
+
+    register_response = await api_client.post(
+        AUTH_REGISTER_EMAIL_ENDPOINT,
+        json={
+            "email": f"{prefix}-{uuid4().hex}@example.com",
+            "password": "Password123",
+            "display_name": "HTTP User",
+        },
+    )
+    access_token = register_response.json()["access_token"]
+    return {"Authorization": f"Bearer {access_token}"}
 
 
 @pytest.mark.parametrize(
@@ -61,16 +81,7 @@ async def test_duplicate_collection_folder_name_returns_409(
     """收藏夹重名冲突通过 HTTP 层返回 409。"""
 
     _ = db_session
-    register_response = await api_client.post(
-        AUTH_REGISTER_EMAIL_ENDPOINT,
-        json={
-            "email": f"folder-{uuid4().hex}@example.com",
-            "password": "Password123",
-            "display_name": "Folder User",
-        },
-    )
-    access_token = register_response.json()["access_token"]
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = await register_test_user_headers(api_client, prefix="folder")
 
     first_response = await api_client.post(
         JOB_COLLECTION_FOLDERS_ENDPOINT,
@@ -86,3 +97,61 @@ async def test_duplicate_collection_folder_name_returns_409(
     assert first_response.status_code == 200
     assert duplicate_response.status_code == 409
     assert duplicate_response.json()["code"] == "JOB_COLLECTION_FOLDER_NAME_CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_list_targets_parses_repeated_statuses(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """目标岗位列表 HTTP 层支持 repeated query list 参数。"""
+
+    headers = await register_test_user_headers(api_client, prefix="target-list")
+
+    response = await api_client.get(
+        JOB_TARGETS_ENDPOINT,
+        params=[
+            ("statuses", "active"),
+            ("statuses", "archived"),
+            ("page", "1"),
+            ("page_size", "5"),
+        ],
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["page_size"] == 5
+
+
+@pytest.mark.asyncio
+async def test_list_user_skills_parses_repeated_skill_ids(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """用户技能画像列表 HTTP 层支持 repeated query list 参数。"""
+
+    headers = await register_test_user_headers(api_client, prefix="user-skill-list")
+
+    response = await api_client.get(
+        USER_SKILLS_ENDPOINT,
+        params=[("skill_ids", "1"), ("skill_ids", "2"), ("page", "1"), ("page_size", "5")],
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["page_size"] == 5
+
+
+@pytest.mark.asyncio
+async def test_list_collections_rejects_invalid_folder_id(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """岗位收藏列表 HTTP 层暴露 schema folder_id 正数校验。"""
+
+    headers = await register_test_user_headers(api_client, prefix="collection-list")
+
+    response = await api_client.get(
+        JOB_COLLECTIONS_ENDPOINT,
+        params={"folder_id": "0"},
+        headers=headers,
+    )
+
+    assert response.status_code == 422

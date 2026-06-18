@@ -104,7 +104,7 @@ class JobPostService:
             try:
                 return JobPostFilterOptionsResponse.model_validate(cached_value)
             except ValidationError:
-                logger.warning(
+                logger.error(
                     "Job post filter options cache payload was invalid",
                     extra={"cache_key": FILTER_OPTIONS_CACHE_KEY},
                 )
