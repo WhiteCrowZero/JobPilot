@@ -65,6 +65,36 @@ async def test_get_knowledge_tree_builds_active_tree_by_skill(
 
 
 @pytest.mark.asyncio
+async def test_get_knowledge_tree_skips_cross_skill_child(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """知识点树不会挂载跨技能父子脏数据。"""
+
+    await truncate_knowledge_tables(db_session)
+    try:
+        python = await seed_test_skill(db_session, "Python")
+        database = await seed_test_skill(db_session, "Database")
+        root = await seed_knowledge_point(db_session, skill_id=python.id, title="Python 基础")
+        await seed_knowledge_point(
+            db_session,
+            skill_id=database.id,
+            title="数据库事务",
+            parent_id=root.id,
+            depth=1,
+        )
+
+        result = await pilot.learning.get_knowledge_tree(
+            KnowledgeTreeQuery(skill_id=python.id, page=1, page_size=10)
+        )
+
+        assert [node.title for node in result.items[0].tree] == ["Python 基础"]
+        assert result.items[0].tree[0].children == []
+    finally:
+        await truncate_knowledge_tables(db_session)
+
+
+@pytest.mark.asyncio
 async def test_get_knowledge_tree_builds_subtree_from_root(
     pilot: JobPilot,
     db_session: AsyncSession,

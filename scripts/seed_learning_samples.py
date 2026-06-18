@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.config import settings
 from job_pilot.core.resources import build_database_only_resources
+from job_pilot.core.search import SqlLikeSearchBackend
 from job_pilot.modules.job_skills.models import Skill
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.knowledge.enums import (
@@ -372,7 +373,7 @@ DEFAULT_QUESTIONS: list[QuestionSeedItem] = [
 async def import_default_skills(session: AsyncSession) -> ImportStats:
     """导入默认技能字典和别名。"""
 
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
     created_skill_count = 0
     created_alias_count = 0
 
@@ -635,8 +636,6 @@ async def _upsert_knowledge_point(
             depth=len(item.path) - 1,
             sort_order=item.sort_order,
             status=KnowledgePointStatus.ACTIVE,
-            source_note=item.source_note,
-            created_by_user_id=None,
         )
         session.add(point)
     else:
@@ -645,8 +644,6 @@ async def _upsert_knowledge_point(
         point.depth = len(item.path) - 1
         point.sort_order = item.sort_order
         point.status = KnowledgePointStatus.ACTIVE
-        point.source_note = item.source_note
-        point.created_by_user_id = None
 
     await session.flush()
     return point, created
@@ -795,6 +792,15 @@ async def _upsert_primary_question_skill(
     skill_id: int,
     knowledge_point_id: int,
 ) -> bool:
+    knowledge_point = await session.get(KnowledgePoint, knowledge_point_id)
+    if knowledge_point is None:
+        raise ValueError(f"Missing knowledge point id: {knowledge_point_id}")
+    if knowledge_point.skill_id != skill_id:
+        raise ValueError(
+            "Question skill link mismatch: "
+            f"skill_id={skill_id}, knowledge_point_id={knowledge_point_id}"
+        )
+
     result = await session.execute(
         select(QuestionSkill)
         .where(

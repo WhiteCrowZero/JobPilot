@@ -7,5 +7,5 @@ from job_pilot.modules.questions.router import router as questions_router
 
 router = APIRouter()
 
-router.include_router(knowledge_router, tags=["knowledge"])
-router.include_router(questions_router, tags=["questions"])
+router.include_router(knowledge_router, prefix="/knowledge", tags=["knowledge"])
+router.include_router(questions_router, prefix="/questions", tags=["questions"])

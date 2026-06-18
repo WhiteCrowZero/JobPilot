@@ -14,11 +14,11 @@ from job_pilot.modules.ingestion.repository import (
     RawJobIngestionRepository,
     RawRecordIngestionAction,
 )
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     extract_raw_skill_candidates,
 )
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
 
 logger = logging.getLogger(__name__)
 

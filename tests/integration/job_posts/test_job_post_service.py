@@ -16,9 +16,9 @@ from job_pilot.modules.job_posts.contracts import (
 from job_pilot.modules.job_posts.contracts import JobPostSort
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import JobPost
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.job_skills.schemas import SkillListParams
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
 from tests.helpers.database import truncate_job_tables
 
 

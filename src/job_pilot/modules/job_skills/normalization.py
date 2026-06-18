@@ -5,7 +5,7 @@ import json
 import re
 from collections.abc import Iterable
 
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 
 _SPLIT_PATTERN = re.compile(r"[\n\r,，、;/；|]+")
 _ALLOWED_CHARS_PATTERN = re.compile(r"[^0-9a-z\u4e00-\u9fff+#.]+")

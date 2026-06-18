@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.config import settings
 from job_pilot.core.resources import build_database_only_resources
+from job_pilot.core.search import SqlLikeSearchBackend
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 
 
@@ -66,7 +67,7 @@ DEFAULT_SKILL_DICTIONARY: list[SkillSeedItem] = [
 async def seed_default_skills(session: AsyncSession) -> tuple[int, int]:
     """初始化默认技能字典，重复执行时只补齐缺失记录。"""
 
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
     created_skill_count = 0
     created_alias_count = 0
 

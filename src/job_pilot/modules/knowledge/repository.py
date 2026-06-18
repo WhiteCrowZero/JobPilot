@@ -11,23 +11,29 @@ from job_pilot.core.search import (
     SortMap,
     apply_sort_by_key,
     clean_optional_text,
-    fetch_offset_page,
+    fetch_page_ids,
+    order_entities_by_ids,
 )
 from job_pilot.modules.knowledge.contracts import KnowledgePointSearchQuery
 from job_pilot.modules.knowledge.enums import KnowledgePointStatus
 from job_pilot.modules.knowledge.models import KnowledgePoint
 
-KNOWLEDGE_POINT_DEFAULT_SORT = "directory"
 KNOWLEDGE_POINT_SORTS: SortMap = {
-    KNOWLEDGE_POINT_DEFAULT_SORT: lambda: cast(
+    "created_at_desc": lambda: cast(
         tuple[ColumnElement[object], ...],
-        (
-            KnowledgePoint.skill_id.asc(),
-            KnowledgePoint.depth.asc(),
-            KnowledgePoint.parent_id.asc().nulls_first(),
-            KnowledgePoint.sort_order.asc(),
-            KnowledgePoint.id.asc(),
-        ),
+        (KnowledgePoint.created_at.desc(), KnowledgePoint.id.desc()),
+    ),
+    "created_at_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (KnowledgePoint.created_at.asc(), KnowledgePoint.id.asc()),
+    ),
+    "updated_at_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (KnowledgePoint.updated_at.desc().nulls_last(), KnowledgePoint.id.desc()),
+    ),
+    "updated_at_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (KnowledgePoint.updated_at.asc().nulls_last(), KnowledgePoint.id.asc()),
     ),
 }
 
@@ -46,13 +52,23 @@ class KnowledgeRepository:
     ) -> list[KnowledgePoint]:
         """按条件查询知识点列表，多取一条用于判断 has_next。"""
 
-        stmt = self._build_knowledge_points_stmt(params)
-        stmt = self._apply_default_order(stmt)
-        return await fetch_offset_page(
+        base_stmt = self._build_base_search_stmt(params)
+        stmt = self._apply_sort(base_stmt, params)
+        knowledge_point_ids = await fetch_page_ids(
             db,
             stmt,
             offset=params.offset,
             limit=params.limit,
+        )
+        if not knowledge_point_ids:
+            return []
+
+        entity_stmt = select(KnowledgePoint).where(KnowledgePoint.id.in_(knowledge_point_ids))
+        entity_result = await db.execute(entity_stmt)
+        return order_entities_by_ids(
+            knowledge_point_ids,
+            entity_result.scalars().all(),
+            get_id=lambda job_post: job_post.id,
         )
 
     async def get_knowledge_point(
@@ -92,10 +108,8 @@ class KnowledgeRepository:
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
-    def _build_knowledge_points_stmt(
-        self, params: KnowledgePointSearchQuery
-    ) -> Select[tuple[KnowledgePoint]]:
-        stmt = select(KnowledgePoint)
+    def _build_base_search_stmt(self, params: KnowledgePointSearchQuery) -> Select[tuple[int]]:
+        stmt = select(KnowledgePoint.id)
 
         conditions: list[ColumnElement[bool]] = []
 
@@ -121,15 +135,15 @@ class KnowledgeRepository:
             return stmt
         return stmt.where(and_(*conditions))
 
-    def _apply_default_order(
+    def _apply_sort(
         self,
-        stmt: Select[tuple[KnowledgePoint]],
-    ) -> Select[tuple[KnowledgePoint]]:
-        """按知识点目录顺序返回列表。"""
-
+        stmt: Select[tuple[int]],
+        params: KnowledgePointSearchQuery,
+    ) -> Select[tuple[int]]:
+        # 排序字段必须白名单控制，不允许前端直接传数据库字段名。
         return apply_sort_by_key(
             stmt,
-            sort_key=KNOWLEDGE_POINT_DEFAULT_SORT,
+            sort_key=params.sort,
             sort_map=KNOWLEDGE_POINT_SORTS,
             error_label="knowledge point",
         )

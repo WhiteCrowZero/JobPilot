@@ -9,7 +9,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
@@ -34,8 +33,20 @@ class KnowledgePoint(TimestampMixin, Base):
 
     __tablename__ = "knowledge_points"
     __table_args__ = (
-        UniqueConstraint(
-            "skill_id", "parent_id", "title", name="uq_knowledge_points_sibling_title"
+        Index(
+            "uq_knowledge_points_root_title",
+            "skill_id",
+            "title",
+            unique=True,
+            postgresql_where=text("parent_id IS NULL"),
+        ),
+        Index(
+            "uq_knowledge_points_child_title",
+            "skill_id",
+            "parent_id",
+            "title",
+            unique=True,
+            postgresql_where=text("parent_id IS NOT NULL"),
         ),
         CheckConstraint("depth >= 0", name="ck_knowledge_points_depth_non_negative"),
         CheckConstraint("sort_order >= 0", name="ck_knowledge_points_sort_order_non_negative"),

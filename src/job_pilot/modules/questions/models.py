@@ -238,7 +238,7 @@ class QuestionOption(TimestampMixin, Base):
 class QuestionAnswer(TimestampMixin, Base):
     """题目答案表。
 
-    主要服务于开放面试题、短答题和后续 coding 题。
+    主要服务于开放面试题。
     不区分 answer_type，避免主观分类过早固化。
     """
 
@@ -318,11 +318,20 @@ class QuestionSkill(TimestampMixin, Base):
 
     __tablename__ = "question_skills"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_question_skills_question_skill_no_knowledge",
+            "question_id",
+            "skill_id",
+            unique=True,
+            postgresql_where=text("knowledge_point_id IS NULL"),
+        ),
+        Index(
+            "uq_question_skills_question_skill_knowledge",
             "question_id",
             "skill_id",
             "knowledge_point_id",
-            name="uq_question_skills_question_skill_knowledge",
+            unique=True,
+            postgresql_where=text("knowledge_point_id IS NOT NULL"),
         ),
         Index(
             "uq_question_skills_primary_question",

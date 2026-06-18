@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from job_pilot.core.pagination import PageParams, PageResult
+from job_pilot.modules.knowledge.contracts import KnowledgePointSort
 from job_pilot.modules.knowledge.enums import KnowledgePointLevel, KnowledgePointStatus
 
 
@@ -15,9 +16,9 @@ class KnowledgeTreeNode(BaseModel):
     title: str
     summary: str | None = None
     level: KnowledgePointLevel
+    status: KnowledgePointStatus
     depth: int
     sort_order: int
-    status: KnowledgePointStatus
     created_at: datetime
     updated_at: datetime
     children: list[KnowledgeTreeNode] = Field(default_factory=list)
@@ -46,7 +47,8 @@ class KnowledgePointSearchParams(PageParams):
 
     keyword: str | None = Field(default=None, max_length=100)
     skill_id: int | None = Field(default=None, ge=1)
-    levels: list[KnowledgePointLevel] | None = None
+    levels: list[KnowledgePointLevel] | None = Field(default=None, max_length=10)
+    sort: KnowledgePointSort = "updated_at_desc"
 
 
 class KnowledgePointListItem(BaseModel):

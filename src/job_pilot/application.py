@@ -38,6 +38,7 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostListResponse,
 )
 from job_pilot.modules.job_posts.service import JobPostService, build_job_post_service
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate, SkillSyncResult
 from job_pilot.modules.job_skills.schemas import SkillListParams, SkillListResponse
 from job_pilot.modules.job_skills.service import (
     JobSkillSyncService,
@@ -45,7 +46,6 @@ from job_pilot.modules.job_skills.service import (
     build_job_skill_sync_service,
     build_skill_dictionary_service,
 )
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate, SkillSyncResult
 from job_pilot.modules.job_targets.contracts import (
     JobTargetCreateCommand,
     JobTargetListQuery,
@@ -62,6 +62,11 @@ from job_pilot.modules.knowledge.schemas import (
     KnowledgeTreeListResponse,
 )
 from job_pilot.modules.knowledge.service import KnowledgeService, build_knowledge_service
+from job_pilot.modules.questions.contracts import QuestionSearchQuery
+from job_pilot.modules.questions.schemas import (
+    QuestionDetailResponse,
+    QuestionListResponse,
+)
 from job_pilot.modules.questions.service import QuestionService, build_question_service
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
@@ -569,6 +574,24 @@ class JobPilotLearningApi:
             return await self.knowledge_service.search_knowledge_points(
                 uow.require_session(),
                 params=params,
+            )
+
+    async def search_questions(self, params: QuestionSearchQuery) -> QuestionListResponse:
+        """搜索题目列表。"""
+
+        async with self.uow_factory() as uow:
+            return await self.question_service.search_questions(
+                uow.require_session(),
+                params=params,
+            )
+
+    async def get_question_detail(self, *, question_id: int) -> QuestionDetailResponse:
+        """读取题目详情。"""
+
+        async with self.uow_factory() as uow:
+            return await self.question_service.get_question_detail(
+                uow.require_session(),
+                question_id=question_id,
             )
 
 

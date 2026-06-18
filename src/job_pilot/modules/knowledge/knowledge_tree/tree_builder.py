@@ -42,6 +42,9 @@ class KnowledgeTreeBuilder:
             if node.parent_id is None:
                 root_ids_by_skill_id[node.skill_id].append(node.id)
                 continue
+            parent = nodes_by_id.get(node.parent_id)
+            if parent is None or parent.skill_id != node.skill_id:
+                continue
             child_ids_by_parent_id[node.parent_id].append(node.id)
 
         if params.root_id is not None:
@@ -125,9 +128,9 @@ class KnowledgeTreeBuilder:
             title=node.title,
             summary=node.summary,
             level=node.level,
+            status=node.status,
             depth=node.depth,
             sort_order=node.sort_order,
-            status=node.status,
             created_at=node.created_at,
             updated_at=node.updated_at,
             children=children,

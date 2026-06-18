@@ -11,7 +11,7 @@ from job_pilot.modules.knowledge.models import KnowledgePoint
 from job_pilot.modules.knowledge.repository import KnowledgeRepository
 
 KNOWLEDGE_TREE_CACHE_PREFIX = "knowledge:tree:v1:"
-KNOWLEDGE_TREE_CACHE_TTL_SECONDS = 60 * 60 * 6
+KNOWLEDGE_TREE_CACHE_TTL_SECONDS = 60 * 60 * 3
 
 SnapshotNodeListAdapter = TypeAdapter(list[KnowledgeTreeSnapshotNode])
 

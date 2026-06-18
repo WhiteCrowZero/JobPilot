@@ -432,7 +432,7 @@ class StudyTaskQuestion(TimestampMixin, Base):
 class StudyTaskQuestionAttempt(TimestampMixin, Base):
     """学习任务内某道题的一次作答记录。
 
-    该表用于保存多次作答历史，支持选择题、开放题和后续 coding 题。
+    该表用于保存多次作答历史，支持选择题、开放题题。
     """
 
     __tablename__ = "study_task_question_attempts"

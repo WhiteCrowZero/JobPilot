@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_pilot.core.exceptions import BadRequestError
 from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.models import JobPost
+from job_pilot.modules.job_skills.contracts import SkillAliasMatch
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill, SkillAlias
-from job_pilot.modules.job_skills.skill_sync_contracts import SkillAliasMatch
 
 
 class SkillDictionaryRepository:

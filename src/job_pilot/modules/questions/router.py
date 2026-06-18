@@ -1,23 +1,36 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Path, Query
+
+from job_pilot.api.deps import JobPilotDep
+from job_pilot.modules.questions.contracts import QuestionSearchQuery
+from job_pilot.modules.questions.schemas import (
+    QuestionDetailResponse,
+    QuestionListResponse,
+    QuestionSearchParams,
+)
 
 router = APIRouter()
 
 
-# @router.get("/search", response_model=JobPostListResponse)
-# async def search_job_posts(
-#     pilot: JobPilotDep,
-#     params: Annotated[JobPostSearchParams, Query()],
-# ) -> JobPostListResponse:
-#     """查询岗位列表，支持关键词、枚举、薪资、地点文本和时间范围筛选。"""
-#
-#     query = JobPostSearchQuery(**params.model_dump())
-#     return await pilot.job_posts.search(query)
-#
-#
-# @router.get("/{question_id}", response_model=JobPostDetailResponse)
-# async def read_job_post_detail(job_post_id: int, pilot: JobPilotDep) -> JobPostDetailResponse:
-#     """读取岗位详情。"""
-#
-#     return await pilot.job_posts.get_detail(job_post_id=job_post_id)
+@router.get("/search", response_model=QuestionListResponse)
+async def search_questions(
+    pilot: JobPilotDep,
+    params: Annotated[QuestionSearchParams, Query()],
+) -> QuestionListResponse:
+    """查询题目列表，支持关键词、题型、难度、技能和知识点筛选。"""
+
+    query = QuestionSearchQuery(**params.model_dump())
+    return await pilot.learning.search_questions(query)
+
+
+@router.get("/{question_id}", response_model=QuestionDetailResponse)
+async def read_question_detail(
+    question_id: Annotated[int, Path(gt=0)],
+    pilot: JobPilotDep,
+) -> QuestionDetailResponse:
+    """读取题目详情。"""
+
+    return await pilot.learning.get_question_detail(question_id=question_id)

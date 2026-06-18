@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.exceptions import NotFoundError
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate, SkillAliasMatch
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     extract_raw_skill_candidates,
@@ -19,7 +20,6 @@ from job_pilot.modules.job_skills.service import (
     JobSkillSyncService,
     SkillNormalizationService,
 )
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate, SkillAliasMatch
 
 
 class FakeSkillDictionaryRepository(SkillDictionaryRepository):

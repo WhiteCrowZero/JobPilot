@@ -5,6 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.core.search import SearchBackend
+from job_pilot.modules.job_skills.contracts import (
+    RawSkillCandidate,
+    SkillAliasMatch,
+    SkillNormalizationResult,
+    SkillSyncResult,
+)
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     normalize_skill_alias,
@@ -17,12 +23,6 @@ from job_pilot.modules.job_skills.schemas import (
     SkillListItem,
     SkillListParams,
     SkillListResponse,
-)
-from job_pilot.modules.job_skills.skill_sync_contracts import (
-    RawSkillCandidate,
-    SkillAliasMatch,
-    SkillNormalizationResult,
-    SkillSyncResult,
 )
 
 
