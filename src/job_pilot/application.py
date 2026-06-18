@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from job_pilot.core.resources import AppResources
+from job_pilot.core.uow import UnitOfWorkFactory, build_sqlalchemy_uow_factory
 from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.service import AuthService, AuthTokenSnapshot, build_auth_service
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
@@ -55,11 +56,13 @@ from job_pilot.modules.job_targets.schemas import (
     JobTargetResponse,
 )
 from job_pilot.modules.job_targets.service import JobTargetService, build_job_target_service
-from job_pilot.modules.knowledge.contracts import KnowledgeTreeQuery
+from job_pilot.modules.knowledge.contracts import KnowledgePointSearchQuery, KnowledgeTreeQuery
 from job_pilot.modules.knowledge.schemas import (
+    KnowledgePointListResponse,
     KnowledgeTreeListResponse,
 )
 from job_pilot.modules.knowledge.service import KnowledgeService, build_knowledge_service
+from job_pilot.modules.questions.service import QuestionService, build_question_service
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
     UserSkillUpdateCommand,
@@ -70,7 +73,6 @@ from job_pilot.modules.user_skills.schemas import (
     UserSkillResponse,
 )
 from job_pilot.modules.user_skills.service import UserSkillService, build_user_skill_service
-from job_pilot.uow import UnitOfWorkFactory, build_sqlalchemy_uow_factory
 
 
 @dataclass(slots=True)
@@ -546,6 +548,7 @@ class JobPilotLearningApi:
     resources: AppResources
     uow_factory: UnitOfWorkFactory
     knowledge_service: KnowledgeService
+    question_service: QuestionService
 
     async def get_knowledge_tree(self, params: KnowledgeTreeQuery) -> KnowledgeTreeListResponse:
         """读取知识点树。"""
@@ -555,6 +558,17 @@ class JobPilotLearningApi:
                 uow.require_session(),
                 params=params,
                 cache=self.resources.require_cache(),
+            )
+
+    async def search_knowledge_points(
+        self, params: KnowledgePointSearchQuery
+    ) -> KnowledgePointListResponse:
+        """搜索知识点列表。"""
+
+        async with self.uow_factory() as uow:
+            return await self.knowledge_service.search_knowledge_points(
+                uow.require_session(),
+                params=params,
             )
 
 
@@ -585,7 +599,7 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
         job_posts=JobPilotJobPostApi(
             resources=resources,
             uow_factory=uow_factory,
-            service=build_job_post_service(search_backend=search_backend),
+            service=build_job_post_service(search_backend),
         ),
         skills=JobPilotSkillApi(
             uow_factory=uow_factory,
@@ -603,6 +617,7 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
         learning=JobPilotLearningApi(
             resources=resources,
             uow_factory=uow_factory,
-            knowledge_service=build_knowledge_service(),
+            knowledge_service=build_knowledge_service(search_backend),
+            question_service=build_question_service(search_backend),
         ),
     )

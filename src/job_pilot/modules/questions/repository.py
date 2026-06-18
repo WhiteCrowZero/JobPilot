@@ -7,12 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from job_pilot.core.search.backend import SearchBackend
-from job_pilot.core.search.search_tools import (
-    clean_optional_int_list,
-    clean_optional_list,
-    clean_optional_text,
-)
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import (
@@ -23,7 +18,7 @@ from job_pilot.modules.job_posts.models import (
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 
 
-class JobPostRepository:
+class QuestionRepository:
     """岗位查询数据库操作。
 
     MVP 查询只依赖 job_posts 热字段和 detail.description 冷字段；
@@ -133,7 +128,8 @@ class JobPostRepository:
         if params.seen_to is not None:
             conditions.append(JobPost.last_seen_at <= params.seen_to)
 
-        keyword = clean_optional_text(params.keyword)
+        # TODO: ES
+        keyword = _clean_optional_text(params.keyword)
         if keyword is not None:
             detail_exists = cast(
                 ColumnElement[bool],
@@ -157,13 +153,13 @@ class JobPostRepository:
             )
             conditions.append(keyword_condition)
 
-        location_keywords = clean_optional_list(params.locations)
+        location_keywords = _clean_optional_list(params.locations)
         if location_keywords:
             conditions.append(
                 self.search_backend.contains_any_text(JobPost.locations, location_keywords)
             )
 
-        skill_ids = clean_optional_int_list(params.skill_ids)
+        skill_ids = _clean_optional_int_list(params.skill_ids)
         if skill_ids:
             matched_job_ids = (
                 select(JobPostSkill.job_post_id)
@@ -243,3 +239,23 @@ class JobPostLookupRepository:
             JobPost.deleted_at.is_(None),
             JobPost.status == JobPostStatus.OPEN,
         ]
+
+
+def _clean_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned_value = value.strip()
+    return cleaned_value or None
+
+
+def _clean_optional_list(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    cleaned_values = [value.strip() for value in values if value.strip()]
+    return list(dict.fromkeys(cleaned_values))
+
+
+def _clean_optional_int_list(values: list[int] | None) -> list[int]:
+    if not values:
+        return []
+    return list(dict.fromkeys(value for value in values if value > 0))

@@ -5,8 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from job_pilot.api.deps import JobPilotDep
-from job_pilot.modules.knowledge.contracts import KnowledgeTreeQuery
-from job_pilot.modules.knowledge.schemas import KnowledgeTreeListResponse, KnowledgeTreeParams
+from job_pilot.modules.knowledge.contracts import KnowledgePointSearchQuery, KnowledgeTreeQuery
+from job_pilot.modules.knowledge.schemas import (
+    KnowledgePointListResponse,
+    KnowledgePointSearchParams,
+    KnowledgeTreeListResponse,
+    KnowledgeTreeParams,
+)
 
 router = APIRouter()
 
@@ -20,9 +25,19 @@ async def read_knowledge_tree(
 
     query = KnowledgeTreeQuery(
         skill_id=params.skill_id,
-        parent_id=params.parent_id,
-        include_archived=params.include_archived,
+        root_id=params.root_id,
         page=params.page,
         page_size=params.page_size,
     )
     return await pilot.learning.get_knowledge_tree(query)
+
+
+@router.get("/search", response_model=KnowledgePointListResponse)
+async def search_knowledge_points(
+    pilot: JobPilotDep,
+    params: Annotated[KnowledgePointSearchParams, Query()],
+) -> KnowledgePointListResponse:
+    """按条件搜索知识点，返回普通分页列表。"""
+
+    query = KnowledgePointSearchQuery(**params.model_dump())
+    return await pilot.learning.search_knowledge_points(query)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from job_pilot.core.pagination import PageParams, PageResult
 from job_pilot.modules.knowledge.enums import KnowledgePointLevel, KnowledgePointStatus
@@ -33,18 +33,33 @@ class KnowledgeTreeResponse(BaseModel):
 class KnowledgeTreeParams(PageParams):
     """知识点树查询参数。"""
 
-    skill_id: int | None = None
-    parent_id: int | None = None
-    include_archived: bool = False
-
-    @model_validator(mode="after")
-    def validate_tree_scope(self) -> KnowledgeTreeParams:
-        """限制一次请求只使用一种树起点。"""
-
-        if self.skill_id is not None and self.parent_id is not None:
-            raise ValueError("skill_id and parent_id cannot be set at the same time")
-        return self
+    skill_id: int | None = Field(default=None, ge=1)
+    root_id: int | None = Field(default=None, ge=1)
 
 
 class KnowledgeTreeListResponse(PageResult[KnowledgeTreeResponse]):
     """知识点树分页响应。"""
+
+
+class KnowledgePointSearchParams(PageParams):
+    """知识点筛选参数。"""
+
+    keyword: str | None = Field(default=None, max_length=100)
+    skill_id: int | None = Field(default=None, ge=1)
+    levels: list[KnowledgePointLevel] | None = None
+
+
+class KnowledgePointListItem(BaseModel):
+    """知识点节点响应。"""
+
+    id: int
+    skill_id: int
+    title: str
+    summary: str | None = None
+    level: KnowledgePointLevel
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgePointListResponse(PageResult[KnowledgePointListItem]):
+    """知识点分页响应。"""
