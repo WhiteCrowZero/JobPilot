@@ -41,6 +41,7 @@ async def pilot_resources(app_resources: AppResources) -> AsyncIterator[AppResou
     resources = AppResources(
         database=app_resources.database,
         cache=cache,
+        search_backend=app_resources.search_backend,
     )
     try:
         yield resources

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
+from job_pilot.core.search import SqlLikeSearchBackend
 from job_pilot.modules.job_skills.models import SkillAlias
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.job_skills.schemas import SkillListParams
@@ -18,7 +19,7 @@ async def test_repository_stores_multiple_aliases_for_one_skill(
     """技能字典仓储会按规范化别名去重。"""
 
     await truncate_job_tables(db_session)
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
 
     try:
         skill, _ = await repository.upsert_skill(db=db_session, name="PostgreSQL")
@@ -51,7 +52,7 @@ async def test_list_skills_total_respects_keyword_filter(
     """公开技能入口返回符合关键词筛选的总数。"""
 
     await truncate_job_tables(db_session)
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
 
     try:
         await repository.upsert_skill(db=db_session, name="Python")

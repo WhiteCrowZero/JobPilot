@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import (
@@ -22,8 +23,11 @@ class JobPostRepository:
 
     MVP 查询只依赖 job_posts 热字段和 detail.description 冷字段；
     地点不再 join 子表，locations 作为文本字段轻量筛选。
-    标题搜索先用 ILIKE，后续接 ES/embedding 时可替换 keyword 查询入口。
+    文本搜索统一委托 SearchBackend，repository 不直接编码 LIKE 细节。
     """
+
+    def __init__(self, search_backend: SearchBackend) -> None:
+        self.search_backend = search_backend
 
     async def search_job_posts(
         self,
@@ -127,20 +131,24 @@ class JobPostRepository:
         # TODO: ES
         keyword = _clean_optional_text(params.keyword)
         if keyword is not None:
-            keyword_like = f"%{keyword}%"
             detail_exists = cast(
                 ColumnElement[bool],
                 exists(
                     select(literal(1)).where(
                         JobPostDetail.job_post_id == JobPost.id,
-                        JobPostDetail.description.ilike(keyword_like),
+                        self.search_backend.contains_text(JobPostDetail.description, keyword),
                     )
                 ),
             )
             keyword_condition = or_(
-                JobPost.title.ilike(keyword_like),
-                JobPost.company_name.ilike(keyword_like),
-                JobPost.locations.ilike(keyword_like),
+                self.search_backend.contains_text_in_any_field(
+                    (
+                        JobPost.title,
+                        JobPost.company_name,
+                        JobPost.locations,
+                    ),
+                    keyword,
+                ),
                 detail_exists,
             )
             conditions.append(keyword_condition)
@@ -148,7 +156,7 @@ class JobPostRepository:
         location_keywords = _clean_optional_list(params.locations)
         if location_keywords:
             conditions.append(
-                or_(*(JobPost.locations.ilike(f"%{keyword}%") for keyword in location_keywords))
+                self.search_backend.contains_any_text(JobPost.locations, location_keywords)
             )
 
         skill_ids = _clean_optional_int_list(params.skill_ids)

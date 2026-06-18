@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     normalize_skill_alias,
@@ -170,22 +171,22 @@ class JobSkillSyncService:
         )
 
 
-def build_skill_dictionary_service() -> SkillDictionaryService:
+def build_skill_dictionary_service(search_backend: SearchBackend) -> SkillDictionaryService:
     """组装技能字典 service。"""
 
-    return SkillDictionaryService(repository=SkillDictionaryRepository())
+    return SkillDictionaryService(repository=SkillDictionaryRepository(search_backend))
 
 
-def build_skill_normalization_service() -> SkillNormalizationService:
+def build_skill_normalization_service(search_backend: SearchBackend) -> SkillNormalizationService:
     """组装技能归一化 service。"""
 
-    return SkillNormalizationService(repository=SkillDictionaryRepository())
+    return SkillNormalizationService(repository=SkillDictionaryRepository(search_backend))
 
 
-def build_job_skill_sync_service() -> JobSkillSyncService:
+def build_job_skill_sync_service(search_backend: SearchBackend) -> JobSkillSyncService:
     """组装岗位技能同步 service。"""
 
     return JobSkillSyncService(
-        skill_normalization_service=build_skill_normalization_service(),
+        skill_normalization_service=build_skill_normalization_service(search_backend),
         repository=JobPostSkillRepository(),
     )

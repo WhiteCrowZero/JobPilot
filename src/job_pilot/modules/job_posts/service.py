@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_pilot.core.cache import CacheStore
 from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
@@ -157,11 +158,11 @@ class JobPostService:
         )
 
 
-def build_job_post_service() -> JobPostService:
+def build_job_post_service(search_backend: SearchBackend) -> JobPostService:
     """组装岗位查询 service 的默认依赖。"""
 
     return JobPostService(
-        repository=JobPostRepository(),
+        repository=JobPostRepository(search_backend=search_backend),
         lookup_repository=JobPostLookupRepository(),
         skill_repository=JobPostSkillRepository(),
     )

@@ -23,6 +23,9 @@ from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate,
 
 
 class FakeSkillDictionaryRepository(SkillDictionaryRepository):
+    def __init__(self) -> None:
+        pass
+
     async def list_aliases(self, db: AsyncSession) -> dict[str, tuple[int, str]]:
         _ = db
         return {

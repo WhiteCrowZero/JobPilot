@@ -12,7 +12,7 @@ from job_pilot.core.message_queue import (
     MessageQueue,
     NullMessageQueue,
 )
-from job_pilot.core.search import NullSearchBackend, SearchBackend
+from job_pilot.core.search import SearchBackend, SqlLikeSearchBackend
 from job_pilot.db.session import DatabaseResource, build_database_resource
 
 # TODO: 第七阶段处理 MQ ES
@@ -167,7 +167,8 @@ def build_app_resources(
         redis_for_lock = _require_built_redis(redis_client, "lock")
         lock = RedisDistributedLock(redis_for_lock)
 
-    search_backend = NullSearchBackend() if selected_spec.search else None
+    # TODO: 待处理完善，阶段 7
+    search_backend = SqlLikeSearchBackend() if selected_spec.search else None
     message_queue = NullMessageQueue() if selected_spec.message_queue else None
 
     return AppResources(

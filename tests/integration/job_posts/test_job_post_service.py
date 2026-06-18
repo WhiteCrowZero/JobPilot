@@ -5,6 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
+from job_pilot.core.search import SqlLikeSearchBackend
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.service import JobSourceConfig
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery as JobPostSearchParams
@@ -288,7 +289,7 @@ async def seed_job_posts(*, pilot: JobPilot, session: AsyncSession) -> int:
 async def seed_test_skills(session: AsyncSession) -> None:
     """构造技能字典数据。"""
 
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
     seed_items = [
         ("Python", ["python", "py"]),
         ("FastAPI", ["fastapi"]),

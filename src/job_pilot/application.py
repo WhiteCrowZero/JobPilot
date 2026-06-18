@@ -574,6 +574,7 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
     """按默认依赖组装 JobPilot 库公开入口。"""
 
     uow_factory = build_sqlalchemy_uow_factory(resources.require_database().session_factory)
+    search_backend = resources.require_search_backend()
 
     return JobPilot(
         auth=JobPilotAuthApi(
@@ -584,12 +585,12 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
         job_posts=JobPilotJobPostApi(
             resources=resources,
             uow_factory=uow_factory,
-            service=build_job_post_service(),
+            service=build_job_post_service(search_backend=search_backend),
         ),
         skills=JobPilotSkillApi(
             uow_factory=uow_factory,
-            dictionary_service=build_skill_dictionary_service(),
-            sync_service=build_job_skill_sync_service(),
+            dictionary_service=build_skill_dictionary_service(search_backend),
+            sync_service=build_job_skill_sync_service(search_backend),
         ),
         workbench=JobPilotWorkbenchApi(
             uow_factory=uow_factory,

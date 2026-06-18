@@ -21,6 +21,7 @@ async def app_resources() -> AsyncIterator[AppResources]:
     test_resources = AppResources(
         database=resources.database,
         cache=cache,
+        search_backend=resources.search_backend,
     )
     try:
         yield test_resources
