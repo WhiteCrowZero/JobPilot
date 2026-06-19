@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import MISSING
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.logging import log_app_event
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.modules.job_collections.contracts import (
     JobCollectionCreateCommand,
@@ -31,6 +33,8 @@ from job_pilot.modules.job_collections.schemas import (
     JobCollectionListResponse,
     JobCollectionResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class JobCollectionService:
@@ -63,6 +67,16 @@ class JobCollectionService:
             )
         except IntegrityError as exc:
             raise JobCollectionFolderNameConflictError() from exc
+        log_app_event(
+            logger,
+            "Job collection folder created",
+            extra={
+                "event": "job_collections.folder_created",
+                "user_id": user_id,
+                "folder_id": folder.id,
+                "is_default": folder.is_default,
+            },
+        )
         return self._folder_to_response(folder)
 
     async def list_folders(
@@ -166,6 +180,16 @@ class JobCollectionService:
             default_folder_id=default_folder.id,
         )
         folder = await self.folder_repository.archive_folder(db, folder=folder)
+        log_app_event(
+            logger,
+            "Job collection folder archived",
+            extra={
+                "event": "job_collections.folder_archived",
+                "user_id": user_id,
+                "folder_id": folder.id,
+                "default_folder_id": default_folder.id,
+            },
+        )
         return self._folder_to_response(folder)
 
     async def collect_job(
@@ -195,6 +219,18 @@ class JobCollectionService:
             job_post_id=payload.job_post_id,
             create_values=create_values,
             update_values=update_values,
+        )
+        log_app_event(
+            logger,
+            "Job collected or restored",
+            extra={
+                "event": "job_collections.collected",
+                "user_id": user_id,
+                "collection_id": collection.id,
+                "job_post_id": collection.job_post_id,
+                "folder_id": collection.folder_id,
+                "status": collection.status.value,
+            },
         )
         return self._collection_to_response(collection)
 
@@ -256,6 +292,17 @@ class JobCollectionService:
                 collection=collection,
                 values=values,
             )
+            log_app_event(
+                logger,
+                "Job collection updated",
+                extra={
+                    "event": "job_collections.updated",
+                    "user_id": user_id,
+                    "collection_id": collection.id,
+                    "job_post_id": collection.job_post_id,
+                    "updated_fields": sorted(values.keys()),
+                },
+            )
         return self._collection_to_response(collection)
 
     async def remove_collection(
@@ -274,6 +321,17 @@ class JobCollectionService:
         )
         if collection is None:
             raise JobCollectionNotFoundError()
+        log_app_event(
+            logger,
+            "Job collection removed",
+            extra={
+                "event": "job_collections.removed",
+                "user_id": user_id,
+                "collection_id": collection.id,
+                "job_post_id": collection.job_post_id,
+                "status": collection.status.value,
+            },
+        )
         return self._collection_to_response(collection)
 
     async def _ensure_job_exists(self, db: AsyncSession, *, job_post_id: int) -> None:

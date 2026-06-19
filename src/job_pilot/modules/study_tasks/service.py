@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.logging import log_app_event
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.modules.study_tasks.contracts import (
     StudyTaskAttemptMutationResult,
@@ -46,6 +48,8 @@ from job_pilot.modules.study_tasks.schemas import (
     StudyTaskUpdateResponse,
 )
 from job_pilot.modules.user_skills.enums import UserSkillProficiencyLevel
+
+logger = logging.getLogger(__name__)
 
 
 class StudyTaskService:
@@ -121,6 +125,18 @@ class StudyTaskService:
             else:
                 reused_count += 1
 
+        log_app_event(
+            logger,
+            "Study tasks generated from target",
+            extra={
+                "event": "study_tasks.generated_from_target",
+                "user_id": user_id,
+                "target_id": target_id,
+                "created_count": created_count,
+                "reused_count": reused_count,
+                "skipped_skill_count": skipped_skill_count,
+            },
+        )
         return StudyTaskGenerationResponse(
             items=items,
             created_count=created_count,
@@ -158,6 +174,18 @@ class StudyTaskService:
         """手动创建当前用户学习任务。"""
 
         task = await self.repository.create_user_task(db, user_id=user_id, payload=payload)
+        log_app_event(
+            logger,
+            "Study task created manually",
+            extra={
+                "event": "study_tasks.created_manual",
+                "user_id": user_id,
+                "task_id": task.id,
+                "skill_id": task.skill_id,
+                "task_type": task.task_type.value,
+                "question_count": task.progress.total_question_count if task.progress else 0,
+            },
+        )
         return self._to_list_item(task)
 
     async def get_task_detail(
@@ -200,6 +228,17 @@ class StudyTaskService:
         )
         if task is None:
             raise StudyTaskNotFoundError()
+        log_app_event(
+            logger,
+            "Study task updated",
+            extra={
+                "event": "study_tasks.updated",
+                "user_id": user_id,
+                "task_id": task.id,
+                "status": task.status.value,
+                "updated_fields": sorted(payload.fields_set),
+            },
+        )
         return self._to_update_response(task)
 
     async def archive_task(
@@ -214,6 +253,16 @@ class StudyTaskService:
         task = await self.repository.archive_user_task(db, user_id=user_id, task_id=task_id)
         if task is None:
             raise StudyTaskNotFoundError()
+        log_app_event(
+            logger,
+            "Study task archived",
+            extra={
+                "event": "study_tasks.archived",
+                "user_id": user_id,
+                "task_id": task.id,
+                "status": task.status.value,
+            },
+        )
         return self._to_update_response(task)
 
     async def submit_attempt(
@@ -236,6 +285,19 @@ class StudyTaskService:
         )
         if result is None:
             raise StudyTaskQuestionNotFoundError()
+        log_app_event(
+            logger,
+            "Study task question attempt submitted",
+            extra={
+                "event": "study_tasks.attempt_submitted",
+                "user_id": user_id,
+                "task_id": task_id,
+                "task_question_id": task_question_id,
+                "question_id": result.question_id,
+                "result": result.result.value,
+                "progress_percent": str(result.progress.progress_percent),
+            },
+        )
         return self._to_attempt_response(result)
 
     async def skip_task_question(
@@ -258,6 +320,18 @@ class StudyTaskService:
         )
         if result is None:
             raise StudyTaskQuestionNotFoundError()
+        log_app_event(
+            logger,
+            "Study task question skipped",
+            extra={
+                "event": "study_tasks.question_skipped",
+                "user_id": user_id,
+                "task_id": task_id,
+                "task_question_id": task_question_id,
+                "question_id": result.question_id,
+                "progress_percent": str(result.progress.progress_percent),
+            },
+        )
         return self._to_attempt_response(result)
 
     @staticmethod

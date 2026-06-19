@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import MISSING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.logging import log_app_event
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
@@ -24,6 +26,8 @@ from job_pilot.modules.user_skills.schemas import (
     UserSkillListResponse,
     UserSkillResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class UserSkillService:
@@ -63,6 +67,17 @@ class UserSkillService:
             update_values=update_values,
         )
 
+        log_app_event(
+            logger,
+            "User skill upserted",
+            extra={
+                "event": "user_skills.upserted",
+                "user_id": user_id,
+                "skill_id": user_skill.skill_id,
+                "user_skill_id": user_skill.id,
+                "status": user_skill.status.value,
+            },
+        )
         return self._to_response(user_skill)
 
     async def list_user_skills(
@@ -115,6 +130,17 @@ class UserSkillService:
                 user_skill=user_skill,
                 values=values,
             )
+            log_app_event(
+                logger,
+                "User skill updated",
+                extra={
+                    "event": "user_skills.updated",
+                    "user_id": user_id,
+                    "skill_id": user_skill.skill_id,
+                    "user_skill_id": user_skill.id,
+                    "updated_fields": sorted(values.keys()),
+                },
+            )
         return self._to_response(user_skill)
 
     async def archive_user_skill(
@@ -133,6 +159,16 @@ class UserSkillService:
         )
         if user_skill is None:
             raise UserSkillNotFoundError()
+        log_app_event(
+            logger,
+            "User skill archived",
+            extra={
+                "event": "user_skills.archived",
+                "user_id": user_id,
+                "skill_id": user_skill.skill_id,
+                "user_skill_id": user_skill.id,
+            },
+        )
         return self._to_response(user_skill)
 
     @staticmethod

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.modules.job_match.contracts import (
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/jobs/{job_post_id}/coverage", response_model=JobSkillCoverageResponse)
 async def analyze_job_skill_coverage(
-    job_post_id: int,
+    job_post_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
     required_level: Annotated[int, Query(ge=1, le=5)] = DEFAULT_REQUIRED_LEVEL,
@@ -41,7 +41,7 @@ async def analyze_job_skill_coverage(
 
 @router.get("/targets/{target_id}/coverage", response_model=JobSkillCoverageResponse)
 async def analyze_target_skill_coverage(
-    target_id: int,
+    target_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
     required_level: Annotated[int, Query(ge=1, le=5)] = DEFAULT_REQUIRED_LEVEL,

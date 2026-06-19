@@ -63,7 +63,7 @@ MVP 阶段只实现核心闭环，不强行完成所有模块。模块目录先�
 | 2  | 基础完成 | 技能字典、技能别名、岗位技能关系、按技能筛选、filter-options 技能候选；生产级 worker 编排后续补齐                            | `docs/ai_report/skill_phase2_review.md` |
 | 3  | 已完成  | 用户收藏岗位、收藏夹、目标岗位、用户技能画像、用户数据隔离、工作台索引优化                                                   | `docs/ai_report/用户工作台*.md`              |
 | 4  | 已完成  | 目标岗位技能覆盖分析：基于 job_post_skills 与 user_skills 做 matched / weak / missing 集合计算，并统计目标岗位高频技能 | `docs/ai_report/阶段4-目标岗位技能覆盖分析收口评估.md`  |
-| 5  | 已完成  | 学习任务闭环：手动创建任务、从目标岗位技能缺口生成练习任务、作答/跳过、进度与得分、任务状态流转、用户数据隔离                          | 暂不新增汇报文档                                |
+| 5  | 已完成  | 学习任务闭环：手动创建任务、从目标岗位技能缺口生成练习任务、作答/跳过、进度与得分、任务状态流转、用户数据隔离                                 | 暂不新增汇报文档                                |
 
 ## 4. MVP 范围
 
@@ -112,9 +112,9 @@ MVP 暂不做：
 | `job_targets`     | `job_targets`                                                       | 用户目标岗位、准备状态、优先级、主目标、收藏来源                     |
 | `user_skills`     | `user_skills`                                                       | 用户技能画像和掌握程度                                  |
 | `job_match`       | 当前不建表                                                               | 读取岗位技能、目标岗位和用户技能，输出 skill coverage 与目标岗位技能频率 |
-| `study_tasks`     | `study_tasks`                                                       | 围绕目标岗位和缺失技能生成学习任务                            |
-| `knowledge`       | `knowledge_points`、`learning_resources`                             | 公共知识点、学习资料、技能分类                              |
-| `questions`       | `interview_questions`、`question_mastery_records`、`practice_records` | 公共题库、用户掌握状态、练习记录                             |
+| `study_tasks`     | `study_tasks`、`study_task_snapshots`、`study_task_progress`、`study_task_questions`、`study_task_question_attempts` | 围绕目标岗位和缺失技能生成学习任务、题目动作和进度聚合 |
+| `knowledge`       | `knowledge_points`                                                   | 公共知识点树和知识点搜索                                  |
+| `questions`       | `questions`、`question_options`、`question_answers`、`question_skills` | 公共题库、选项、答案和题目技能关系                            |
 
 `system` 不作为核心业务表归属模块。健康检查、缓存、日志、后台任务等横切能力优先放在 `api/`、`core/`、`workers/` 中。
 
@@ -217,20 +217,23 @@ uv run pytest
 
 测试目录分层：
 
-| 目录             | 用途                                                              |
-|----------------|-----------------------------------------------------------------|
-| `tests/unit/`  | 测纯函数、service、小型资源对象，不依赖真实 HTTP 服务                               |
-| `tests/api/`   | 接口路径、后续进程内 API 测试辅助                                             |
-| `tests/smoke/` | 类似 Postman 的真实 HTTP 冒烟测试，使用 `@pytest.mark.smoke` 标记，验证已启动服务是否健康 |
+| 目录                   | 用途                                             |
+|----------------------|------------------------------------------------|
+| `tests/unit/`        | 测纯函数、service、小型资源对象，不依赖真实 HTTP 服务              |
+| `tests/api/`         | 进程内 HTTP 契约测试，覆盖认证、路径、参数解析和错误映射              |
+| `tests/integration/` | 依赖测试数据库，覆盖 repository/service 真实业务闭环、事务和用户隔离 |
 
-真实服务冒烟测试默认跳过。需要先启动 API、PostgreSQL、Redis，再显式允许 smoke 测试：
+当前仓库暂未保留真实服务 smoke 测试目录。需要做人工冒烟时，先启动 API、PostgreSQL、Redis，再访问健康检查和 Swagger：
 
 ```bash
 uv run uvicorn job_pilot.main:app --reload
-uv run pytest tests/smoke --run-smoke
 ```
 
-smoke 测试默认请求 `http://127.0.0.1:8000`。普通 `uv run pytest` 只会收集并跳过 smoke 测试，不会请求真实服务。
+```text
+http://127.0.0.1:8000/api/v1/health
+http://127.0.0.1:8000/api/v1/health/readiness
+http://127.0.0.1:8000/docs
+```
 
 如果外部资源不同，可以检查`/health/readiness`接口，如果其中有资源出现问题，大概率是 Windows 的开放端口出现问题了（换成其他端口即可），检查命令：
 
@@ -256,7 +259,7 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 | 2  | 基础完成 | 技能标签        | `skills/skill_aliases/job_post_skills`、别名归一、按技能筛选、岗位详情技能展示、filter-options 技能候选、同步 service 测试                                           |
 | 3  | 已完成  | 用户工作台       | 用户技能画像、岗位收藏夹、默认收藏夹切换、收藏/取消/恢复、目标岗位、目标状态、主目标唯一、收藏来源校验、用户数据隔离、工作台索引优化                                                                    |
 | 4  | 已完成  | 目标岗位技能覆盖分析  | 基于 `job_post_skills` 与 `user_skills` 做集合交集分析，输出 `matched / weak / missing`，并统计 active/paused 目标岗位高频技能；不分析 description，不引入 AI/embedding |
-| 5  | 已完成  | 学习闭环        | 基于阶段 4 输出的 `weak_skills / missing_skills` 创建学习任务，维护任务状态，支持题目作答/跳过、进度得分、任务归档和用户隔离                                                   |
+| 5  | 已完成  | 学习闭环        | 基于阶段 4 输出的 `weak_skills / missing_skills` 创建学习任务，维护任务状态，支持题目作答/跳过、进度得分、任务归档和用户隔离                                                       |
 | 6  | 未开始  | Cache Aside | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                                       |
 | 7  | 未开始  | Celery 摄入   | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                                          |
 | 8  | 未开始  | 工程化收尾       | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                                                |
@@ -266,7 +269,7 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 已完成目标岗位技能覆盖分析，当前只基于 `job_post_skills` 与 `user_skills` 做集合计算，不分析
 `job_post_details.description`，不引入 AI/embedding。阶段 5 已完成学习任务闭环，当前支持手动创建任务、
 从目标岗位 missing/weak 技能缺口生成练习任务、提交作答、跳过题目、进度得分和任务状态流转。当前
-`scripts/seed_jobs.py` 只负责岗位主数据导入，不在脚本内同步技能。后续会在独立 worker /
+`scripts/seed_job_samples.py` 只负责岗位主数据导入，不在脚本内同步技能。后续会在独立 worker /
 编排层中完成“岗位主数据摄入成功后，开启第二个事务同步岗位技能”的生产流程。下一阶段开始接入缓存，阶段 7 再把摄入流程升级为
 Celery 异步任务和幂等处理。
 
@@ -274,16 +277,16 @@ Celery 异步任务和幂等处理。
 
 接口设计按业务闭环推进，优先保证用户侧核心流程可用：
 
-| 阶段 | API                                                                                                                                                                                                                                                                                                              | 说明                                                 |
-|----|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------|
-| 0  | `POST /auth/register/email`、`POST /auth/register/phone`、`POST /auth/login/email`、`POST /auth/login/phone`、`POST /auth/refresh`、`POST /auth/logout`、`GET /users/me`                                                                                                                                               | 完成邮箱/手机号登录态、refresh 轮换、退出和当前用户读取                   |
-| 1  | `GET /jobs`、`GET /jobs/{job_id}` 、`GET /jobs/filter-options`                                                                                                                                                                                                                                                     | 岗位列表、详情、关键词/城市/薪资筛选                                |
-| 2  | `GET /skills`、`GET /jobs?skill_ids=1`、`GET /jobs/filter-options`                                                                                                                                                                                                                                                 | 技能字典、岗位详情技能展示、filter-options 技能候选、按技能筛选岗位          |
-| 3  | `/user/skills`、`/jobs/collections/folders`、`/jobs/collections/folders/{folder_id}/default`、`/jobs/collections`、`/jobs/targets`                                                                                                                                                                                   | 用户技能画像、收藏夹、岗位收藏、目标岗位                               |
-| 4  | `GET /jobs/match/jobs/{job_post_id}/coverage`、`GET /jobs/match/targets/{target_id}/coverage`、`GET /jobs/match/targets/skills`                                                                                                                                                                                    | 单岗位技能覆盖、目标岗位技能覆盖、目标岗位技能统计；只基于结构化技能集合计算             |
-| 5  | `POST /learning/study-tasks`、`GET /learning/study-tasks`、`PATCH /learning/study-tasks/{task_id}`、`DELETE /learning/study-tasks/{task_id}`、`POST /learning/study-tasks/targets/{target_id}/generate`、`POST /learning/study-tasks/{task_id}/questions/{task_question_id}/attempts`、`POST /learning/study-tasks/{task_id}/questions/{task_question_id}/skip` | 创建学习任务、查询任务、更新/归档任务本体、从目标岗位缺口生成任务、提交作答和跳过题目；进度由作答行为派生 |
-| 6  | 无需新增业务 API                                                                                                                                                                                                                                                                                                       | 在岗位详情、热门技能、任务进度等高频读接口接入缓存                          |
-| 7  | `POST /ingestion/tasks`、`GET /ingestion/tasks/{task_id}`、`GET /ingestion/tasks/{task_id}/errors`                                                                                                                                                                                                                 | 创建摄入任务、查询状态、查看错误记录                                 |
+| 阶段 | API | 说明 |
+|----|-----|------|
+| 0  | `POST /api/v1/user/auth/register/email`、`POST /api/v1/user/auth/register/phone`、`POST /api/v1/user/auth/login/email`、`POST /api/v1/user/auth/login/phone`、`POST /api/v1/user/auth/refresh`、`POST /api/v1/user/auth/logout`、`GET /api/v1/user/me` | 完成邮箱/手机号登录态、refresh 轮换、退出和当前用户读取 |
+| 1  | `GET /api/v1/jobs/search`、`GET /api/v1/jobs/{job_post_id}`、`GET /api/v1/jobs/filter-options` | 岗位列表、详情、关键词/城市/薪资筛选 |
+| 2  | `GET /api/v1/jobs/skills`、`GET /api/v1/jobs/search?skill_ids=1`、`GET /api/v1/jobs/filter-options` | 技能字典、岗位详情技能展示、filter-options 技能候选、按技能筛选岗位 |
+| 3  | `/api/v1/user/skills`、`/api/v1/jobs/collections/folders`、`/api/v1/jobs/collections/folders/{folder_id}/default`、`/api/v1/jobs/collections`、`/api/v1/jobs/targets` | 用户技能画像、收藏夹、岗位收藏、目标岗位 |
+| 4  | `GET /api/v1/jobs/match/jobs/{job_post_id}/coverage`、`GET /api/v1/jobs/match/targets/{target_id}/coverage`、`GET /api/v1/jobs/match/targets/skills` | 单岗位技能覆盖、目标岗位技能覆盖、目标岗位技能统计；只基于结构化技能集合计算 |
+| 5  | `POST /api/v1/learning/study-tasks`、`GET /api/v1/learning/study-tasks`、`GET /api/v1/learning/study-tasks/{task_id}`、`PATCH /api/v1/learning/study-tasks/{task_id}`、`DELETE /api/v1/learning/study-tasks/{task_id}`、`POST /api/v1/learning/study-tasks/targets/{target_id}/generate`、`POST /api/v1/learning/study-tasks/{task_id}/questions/{task_question_id}/attempts`、`POST /api/v1/learning/study-tasks/{task_id}/questions/{task_question_id}/skip` | 创建学习任务、查询任务、更新/归档任务本体、从目标岗位缺口生成任务、提交作答和跳过题目；进度由作答行为派生 |
+| 6  | 无需新增业务 API | 在岗位详情、热门技能、任务进度等高频读接口接入缓存 |
+| 7  | `POST /api/v1/ingestion/tasks`、`GET /api/v1/ingestion/tasks/{task_id}`、`GET /api/v1/ingestion/tasks/{task_id}/errors` | 创建摄入任务、查询状态、查看错误记录；当前尚未暴露 HTTP 路由 |
 
 ## 10. 阶段完成标准
 

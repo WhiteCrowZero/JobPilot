@@ -14,6 +14,7 @@ from job_pilot.modules.questions.models import Question, QuestionOption, Questio
 from job_pilot.modules.study_tasks.contracts import (
     StudyTaskCreateCommand,
     StudyTaskGenerateFromTargetCommand,
+    StudyTaskListQuery,
     StudyTaskQuestionAttemptCommand,
     StudyTaskQuestionSkipCommand,
     StudyTaskUpdateCommand,
@@ -450,6 +451,133 @@ async def test_generate_skips_no_question_gap_and_continues_until_max_tasks(
         assert result.skipped_items[0].skill_id == no_question_skill.id
         assert result.skipped_items[0].reason == "no_question"
         assert result.items[0].skill_id == valid_skill.id
+    finally:
+        await truncate_learning_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_generated_task_is_idempotent_until_current_task_changes(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """同一目标技能缺口重复生成时应复用当前任务，避免重复生成。"""
+
+    await truncate_learning_tables(db_session)
+    try:
+        user = await create_test_user(db_session)
+        skill = await seed_test_skill(db_session, "Python")
+        job_post = await seed_test_job_post(db_session)
+        await seed_test_job_post_skills(db_session, job_post_id=job_post.id, skill_ids=[skill.id])
+        target = await seed_test_target(db_session, user_id=user.id, job_post_id=job_post.id)
+        await seed_choice_question(db_session, skill=skill)
+
+        first = await pilot.learning.generate_study_tasks_from_target(
+            user_id=user.id,
+            target_id=target.id,
+            payload=StudyTaskGenerateFromTargetCommand(max_tasks=1),
+        )
+        second = await pilot.learning.generate_study_tasks_from_target(
+            user_id=user.id,
+            target_id=target.id,
+            payload=StudyTaskGenerateFromTargetCommand(max_tasks=1),
+        )
+
+        assert first.created_count == 1
+        assert first.reused_count == 0
+        assert second.created_count == 0
+        assert second.reused_count == 1
+        assert second.items[0].id == first.items[0].id
+    finally:
+        await truncate_learning_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_archived_task_is_hidden_from_default_list_but_visible_by_status(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """归档任务不进入默认待办列表，但显式查询 archived 可以看到。"""
+
+    await truncate_learning_tables(db_session)
+    try:
+        user = await create_test_user(db_session)
+        skill = await seed_test_skill(db_session, "Python")
+        task_id, _task_question_ids, _option_groups = await create_practice_task(
+            pilot,
+            db_session,
+            user_id=user.id,
+            skill=skill,
+            question_count=1,
+        )
+
+        before_archive = await pilot.learning.list_study_tasks(
+            user_id=user.id,
+            params=StudyTaskListQuery(),
+        )
+        await pilot.learning.archive_study_task(user_id=user.id, task_id=task_id)
+        default_list = await pilot.learning.list_study_tasks(
+            user_id=user.id,
+            params=StudyTaskListQuery(),
+        )
+        archived_list = await pilot.learning.list_study_tasks(
+            user_id=user.id,
+            params=StudyTaskListQuery(statuses=[StudyTaskStatus.ARCHIVED]),
+        )
+
+        assert [item.id for item in before_archive.items] == [task_id]
+        assert task_id not in [item.id for item in default_list.items]
+        assert [item.id for item in archived_list.items] == [task_id]
+    finally:
+        await truncate_learning_tables(db_session)
+
+
+@pytest.mark.asyncio
+async def test_completed_task_rejects_additional_attempts_and_skips(
+    pilot: JobPilot,
+    db_session: AsyncSession,
+) -> None:
+    """任务完成后不能继续提交或跳过题目，避免完成态被重复写入。"""
+
+    await truncate_learning_tables(db_session)
+    try:
+        user = await create_test_user(db_session)
+        skill = await seed_test_skill(db_session, "Python")
+        task_id, task_question_ids, option_groups = await create_practice_task(
+            pilot,
+            db_session,
+            user_id=user.id,
+            skill=skill,
+            question_count=1,
+        )
+
+        await pilot.learning.submit_study_task_question_attempt(
+            user_id=user.id,
+            task_id=task_id,
+            task_question_id=task_question_ids[0],
+            payload=StudyTaskQuestionAttemptCommand(
+                selected_option_ids=[option_groups[0][0].id],
+            ),
+        )
+
+        with pytest.raises(StudyTaskQuestionNotFoundError):
+            await pilot.learning.submit_study_task_question_attempt(
+                user_id=user.id,
+                task_id=task_id,
+                task_question_id=task_question_ids[0],
+                payload=StudyTaskQuestionAttemptCommand(
+                    selected_option_ids=[option_groups[0][0].id],
+                ),
+            )
+        with pytest.raises(StudyTaskQuestionNotFoundError):
+            await pilot.learning.skip_study_task_question(
+                user_id=user.id,
+                task_id=task_id,
+                task_question_id=task_question_ids[0],
+                payload=StudyTaskQuestionSkipCommand(),
+            )
+
+        attempt_count = await db_session.scalar(select(func.count(StudyTaskQuestionAttempt.id)))
+        assert attempt_count == 1
     finally:
         await truncate_learning_tables(db_session)
 
