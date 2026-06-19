@@ -59,8 +59,7 @@ EXCLUDE_RELATIVE_PATHS = {
     "docs/杂项",
     "front",
     "openspec",
-    "scripts",
-    ".github",
+    # "scripts",
 }
 
 # 排除文件名

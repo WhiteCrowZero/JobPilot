@@ -59,7 +59,6 @@ async def test_get_knowledge_tree_builds_active_tree_by_skill(
         assert [node.title for node in result.items[0].tree] == ["Python 基础"]
         assert [node.title for node in result.items[0].tree[0].children] == ["语法"]
         assert result.items[0].tree[0].level is KnowledgePointLevel.BASIC
-        assert result.items[0].tree[0].status is KnowledgePointStatus.ACTIVE
     finally:
         await truncate_knowledge_tables(db_session)
 

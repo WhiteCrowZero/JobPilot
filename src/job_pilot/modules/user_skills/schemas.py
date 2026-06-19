@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
 from job_pilot.core.pagination import PageParams, PageResult
 from job_pilot.modules.user_skills.enums import UserSkillSource, UserSkillStatus
+
+PositiveId = Annotated[int, Field(gt=0)]
 
 
 class UserSkillUpsert(BaseModel):
@@ -37,8 +40,8 @@ class UserSkillUpdate(BaseModel):
 class UserSkillListParams(PageParams):
     """用户技能画像列表查询参数。"""
 
-    include_archived: bool = False
-    skill_ids: list[int] | None = None
+    statuses: list[UserSkillStatus] | None = None
+    skill_ids: list[PositiveId] | None = Field(default=None, max_length=50)
 
 
 class UserSkillResponse(BaseModel):

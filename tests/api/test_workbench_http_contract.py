@@ -123,21 +123,54 @@ async def test_list_targets_parses_repeated_statuses(
 
 
 @pytest.mark.asyncio
-async def test_list_user_skills_parses_repeated_skill_ids(
+async def test_list_user_skills_parses_repeated_statuses_and_skill_ids(
     api_client: httpx.AsyncClient,
 ) -> None:
-    """用户技能画像列表 HTTP 层支持 repeated query list 参数。"""
+    """用户技能画像列表 HTTP 层支持 repeated status 和 skill_id 参数。"""
 
     headers = await register_test_user_headers(api_client, prefix="user-skill-list")
 
     response = await api_client.get(
         USER_SKILLS_ENDPOINT,
-        params=[("skill_ids", "1"), ("skill_ids", "2"), ("page", "1"), ("page_size", "5")],
+        params=[
+            ("statuses", "active"),
+            ("statuses", "archived"),
+            ("skill_ids", "1"),
+            ("skill_ids", "2"),
+            ("page", "1"),
+            ("page_size", "5"),
+        ],
         headers=headers,
     )
 
     assert response.status_code == 200
     assert response.json()["page_size"] == 5
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        [("skill_ids", "0")],
+        [("skill_ids", "-1")],
+        [("skill_ids", str(index)) for index in range(1, 52)],
+    ],
+)
+@pytest.mark.asyncio
+async def test_list_user_skills_rejects_invalid_skill_ids(
+    api_client: httpx.AsyncClient,
+    params: list[tuple[str, str]],
+) -> None:
+    """用户技能画像列表 HTTP 层限制 skill_ids 正数且最多 50 个。"""
+
+    headers = await register_test_user_headers(api_client, prefix="user-skill-invalid")
+
+    response = await api_client.get(
+        USER_SKILLS_ENDPOINT,
+        params=params,
+        headers=headers,
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

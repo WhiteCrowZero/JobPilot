@@ -128,7 +128,6 @@ class KnowledgeTreeBuilder:
             title=node.title,
             summary=node.summary,
             level=node.level,
-            status=node.status,
             depth=node.depth,
             sort_order=node.sort_order,
             created_at=node.created_at,

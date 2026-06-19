@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from job_pilot.core.contracts import PageQuery
-from job_pilot.modules.user_skills.enums import UserSkillSource
+from job_pilot.modules.user_skills.enums import UserSkillSource, UserSkillStatus
 
 
 @dataclass(slots=True, frozen=True)
@@ -41,5 +41,5 @@ class UserSkillUpdateCommand:
 class UserSkillListQuery(PageQuery):
     """用户技能列表内部查询参数。"""
 
-    include_archived: bool = False
+    statuses: list[UserSkillStatus] | None = None
     skill_ids: list[int] | None = None

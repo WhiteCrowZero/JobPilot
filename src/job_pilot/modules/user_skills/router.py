@@ -54,7 +54,7 @@ async def list_user_skills(
     """查询当前用户技能画像列表。"""
 
     query = UserSkillListQuery(
-        include_archived=params.include_archived,
+        statuses=params.statuses,
         skill_ids=params.skill_ids,
         page=params.page,
         page_size=params.page_size,

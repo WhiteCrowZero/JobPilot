@@ -68,6 +68,23 @@ from job_pilot.modules.questions.schemas import (
     QuestionListResponse,
 )
 from job_pilot.modules.questions.service import QuestionService, build_question_service
+from job_pilot.modules.study_tasks.contracts import (
+    StudyTaskCreateCommand,
+    StudyTaskGenerateFromTargetCommand,
+    StudyTaskListQuery,
+    StudyTaskQuestionAttemptCommand,
+    StudyTaskQuestionSkipCommand,
+    StudyTaskUpdateCommand,
+)
+from job_pilot.modules.study_tasks.schemas import (
+    StudyTaskAttemptResponse,
+    StudyTaskDetailResponse,
+    StudyTaskGenerationResponse,
+    StudyTaskListItem,
+    StudyTaskListResponse,
+    StudyTaskUpdateResponse,
+)
+from job_pilot.modules.study_tasks.service import StudyTaskService, build_study_task_service
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
     UserSkillUpdateCommand,
@@ -548,12 +565,13 @@ class JobPilotIngestionApi:
 
 @dataclass(slots=True)
 class JobPilotLearningApi:
-    """用户工作台公开入口，聚合收藏、目标岗位、技能画像和匹配分析。"""
+    """学习准备公开入口，聚合知识点、题库和用户学习任务。"""
 
     resources: AppResources
     uow_factory: UnitOfWorkFactory
     knowledge_service: KnowledgeService
     question_service: QuestionService
+    study_task_service: StudyTaskService
 
     async def get_knowledge_tree(self, params: KnowledgeTreeQuery) -> KnowledgeTreeListResponse:
         """读取知识点树。"""
@@ -592,6 +610,123 @@ class JobPilotLearningApi:
             return await self.question_service.get_question_detail(
                 uow.require_session(),
                 question_id=question_id,
+            )
+
+    async def generate_study_tasks_from_target(
+        self,
+        *,
+        user_id: int,
+        target_id: int,
+        payload: StudyTaskGenerateFromTargetCommand,
+    ) -> StudyTaskGenerationResponse:
+        """根据目标岗位生成学习任务。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.generate_from_target(
+                uow.require_session(),
+                user_id=user_id,
+                target_id=target_id,
+                payload=payload,
+            )
+
+    async def create_study_task(
+        self,
+        *,
+        user_id: int,
+        payload: StudyTaskCreateCommand,
+    ) -> StudyTaskListItem:
+        """手动创建当前用户学习任务。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.create_task(
+                uow.require_session(),
+                user_id=user_id,
+                payload=payload,
+            )
+
+    async def list_study_tasks(
+        self,
+        *,
+        user_id: int,
+        params: StudyTaskListQuery,
+    ) -> StudyTaskListResponse:
+        """查询当前用户学习任务列表。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.list_tasks(
+                uow.require_session(),
+                user_id=user_id,
+                params=params,
+            )
+
+    async def update_study_task(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        payload: StudyTaskUpdateCommand,
+    ) -> StudyTaskUpdateResponse:
+        """更新当前用户学习任务本体。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.update_task(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+                payload=payload,
+            )
+
+    async def get_study_task_detail(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+    ) -> StudyTaskDetailResponse:
+        """读取当前用户学习任务详情。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.get_task_detail(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+            )
+
+    async def submit_study_task_question_attempt(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        task_question_id: int,
+        payload: StudyTaskQuestionAttemptCommand,
+    ) -> StudyTaskAttemptResponse:
+        """提交当前用户学习任务题目作答。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.submit_attempt(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+                task_question_id=task_question_id,
+                payload=payload,
+            )
+
+    async def skip_study_task_question(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        task_question_id: int,
+        payload: StudyTaskQuestionSkipCommand,
+    ) -> StudyTaskAttemptResponse:
+        """跳过当前用户学习任务内题目。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.skip_task_question(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+                task_question_id=task_question_id,
+                payload=payload,
             )
 
 
@@ -642,5 +777,6 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
             uow_factory=uow_factory,
             knowledge_service=build_knowledge_service(search_backend),
             question_service=build_question_service(search_backend),
+            study_task_service=build_study_task_service(),
         ),
     )

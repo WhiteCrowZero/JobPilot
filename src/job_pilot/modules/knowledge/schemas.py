@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from job_pilot.core.pagination import PageParams, PageResult
 from job_pilot.modules.knowledge.contracts import KnowledgePointSort
-from job_pilot.modules.knowledge.enums import KnowledgePointLevel, KnowledgePointStatus
+from job_pilot.modules.knowledge.enums import KnowledgePointLevel
 
 
 class KnowledgeTreeNode(BaseModel):
@@ -16,7 +16,6 @@ class KnowledgeTreeNode(BaseModel):
     title: str
     summary: str | None = None
     level: KnowledgePointLevel
-    status: KnowledgePointStatus
     depth: int
     sort_order: int
     created_at: datetime

@@ -287,7 +287,11 @@ async def test_archive_user_skill_excludes_profile_from_default_list(
         )
         archived_list = await pilot.workbench.list_user_skills(
             user_id=user.id,
-            params=UserSkillListParams(include_archived=True, page=1, page_size=10),
+            params=UserSkillListParams(
+                statuses=[UserSkillStatus.ARCHIVED],
+                page=1,
+                page_size=10,
+            ),
         )
 
         assert archived.status == UserSkillStatus.ARCHIVED

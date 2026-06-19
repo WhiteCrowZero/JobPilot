@@ -48,7 +48,9 @@ class UserSkillRepository:
         conditions: list[ColumnElement[bool]] = [UserSkill.user_id == user_id]
         if params.skill_ids:
             conditions.append(UserSkill.skill_id.in_(params.skill_ids))
-        if not params.include_archived:
+        if params.statuses:
+            conditions.append(UserSkill.status.in_(params.statuses))
+        else:
             conditions.append(UserSkill.status == UserSkillStatus.ACTIVE)
 
         stmt = (
