@@ -25,8 +25,8 @@ class StudyTaskSource(StrEnum):
 
     MATCH_MISSING_SKILL = "match_missing_skill"
     MATCH_WEAK_SKILL = "match_weak_skill"
-    SYSTEM_BUILD_IN = "system_build_in"
-    USER_DEFINED = "user_defined"
+    TARGET_SKILL_SUMMARY = "target_skill_summary"
+    MANUAL = "manual"
 
 
 class StudyTaskQuestionStatus(StrEnum):

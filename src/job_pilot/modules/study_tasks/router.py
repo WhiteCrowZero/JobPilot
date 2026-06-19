@@ -125,6 +125,20 @@ async def update_study_task(
     )
 
 
+@router.delete("/{task_id}", response_model=StudyTaskUpdateResponse)
+async def archive_study_task(
+    task_id: Annotated[int, Path(gt=0)],
+    current_user: CurrentActiveUserDep,
+    pilot: JobPilotDep,
+) -> StudyTaskUpdateResponse:
+    """归档当前用户学习任务。"""
+
+    return await pilot.learning.archive_study_task(
+        user_id=current_user.id,
+        task_id=task_id,
+    )
+
+
 @router.get("/{task_id}", response_model=StudyTaskDetailResponse)
 async def read_study_task_detail(
     task_id: Annotated[int, Path(gt=0)],

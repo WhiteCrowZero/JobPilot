@@ -54,8 +54,10 @@ class StudyTaskCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_question_ids(self) -> Self:
-        """手动绑定题目时不允许重复题目。"""
+        """手动绑定题目时校验练习任务题目列表。"""
 
+        if self.task_type == StudyTaskType.QUESTION_PRACTICE and not self.question_ids:
+            raise ValueError("question_practice task requires question_ids")
         if self.question_ids is not None and len(set(self.question_ids)) != len(self.question_ids):
             raise ValueError("question_ids must be unique")
         return self

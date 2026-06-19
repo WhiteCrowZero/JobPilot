@@ -43,6 +43,7 @@ async def register_study_task_user_headers(
         ("POST", STUDY_TASKS_ENDPOINT),
         ("POST", study_task_generate_from_target_endpoint(1)),
         ("PATCH", study_task_endpoint(1)),
+        ("DELETE", study_task_endpoint(1)),
         ("POST", study_task_question_attempts_endpoint(1, 1)),
         ("POST", study_task_question_skip_endpoint(1, 1)),
     ],
@@ -99,6 +100,18 @@ def test_create_study_task_route_declares_created_status() -> None:
     assert route.status_code == 201
 
 
+def test_archive_study_task_route_uses_delete() -> None:
+    """归档学习任务应暴露 DELETE 语义入口。"""
+
+    route = next(
+        route
+        for route in study_tasks_router.routes
+        if isinstance(route, APIRoute) and route.path == "/{task_id}" and "DELETE" in route.methods
+    )
+
+    assert route.response_model is not None
+
+
 @pytest.mark.asyncio
 async def test_create_study_task_rejects_duplicate_question_ids(
     api_client: httpx.AsyncClient,
@@ -121,10 +134,10 @@ async def test_create_study_task_rejects_duplicate_question_ids(
 
 
 @pytest.mark.asyncio
-async def test_generate_study_tasks_from_target_exposes_request_contract(
+async def test_generate_study_tasks_from_missing_target_returns_not_found(
     api_client: httpx.AsyncClient,
 ) -> None:
-    """生成学习任务接口先固定请求字段和空实现响应。"""
+    """生成学习任务时目标岗位不存在应返回 404。"""
 
     headers = await register_study_task_user_headers(api_client, prefix="study-generate")
 
@@ -142,14 +155,8 @@ async def test_generate_study_tasks_from_target_exposes_request_contract(
         headers=headers,
     )
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "items": [],
-        "created_count": 0,
-        "reused_count": 0,
-        "skipped_skill_count": 0,
-        "skipped_items": [],
-    }
+    assert response.status_code == 404
+    assert response.json()["code"] == "STUDY_TASK_TARGET_NOT_FOUND"
 
 
 @pytest.mark.asyncio

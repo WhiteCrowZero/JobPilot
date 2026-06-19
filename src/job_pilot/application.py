@@ -676,6 +676,21 @@ class JobPilotLearningApi:
                 payload=payload,
             )
 
+    async def archive_study_task(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+    ) -> StudyTaskUpdateResponse:
+        """归档当前用户学习任务。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.archive_task(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+            )
+
     async def get_study_task_detail(
         self,
         *,

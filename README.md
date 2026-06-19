@@ -63,6 +63,7 @@ MVP 阶段只实现核心闭环，不强行完成所有模块。模块目录先�
 | 2  | 基础完成 | 技能字典、技能别名、岗位技能关系、按技能筛选、filter-options 技能候选；生产级 worker 编排后续补齐                            | `docs/ai_report/skill_phase2_review.md` |
 | 3  | 已完成  | 用户收藏岗位、收藏夹、目标岗位、用户技能画像、用户数据隔离、工作台索引优化                                                   | `docs/ai_report/用户工作台*.md`              |
 | 4  | 已完成  | 目标岗位技能覆盖分析：基于 job_post_skills 与 user_skills 做 matched / weak / missing 集合计算，并统计目标岗位高频技能 | `docs/ai_report/阶段4-目标岗位技能覆盖分析收口评估.md`  |
+| 5  | 已完成  | 学习任务闭环：手动创建任务、从目标岗位技能缺口生成练习任务、作答/跳过、进度与得分、任务状态流转、用户数据隔离                          | 暂不新增汇报文档                                |
 
 ## 4. MVP 范围
 
@@ -255,7 +256,7 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 | 2  | 基础完成 | 技能标签        | `skills/skill_aliases/job_post_skills`、别名归一、按技能筛选、岗位详情技能展示、filter-options 技能候选、同步 service 测试                                           |
 | 3  | 已完成  | 用户工作台       | 用户技能画像、岗位收藏夹、默认收藏夹切换、收藏/取消/恢复、目标岗位、目标状态、主目标唯一、收藏来源校验、用户数据隔离、工作台索引优化                                                                    |
 | 4  | 已完成  | 目标岗位技能覆盖分析  | 基于 `job_post_skills` 与 `user_skills` 做集合交集分析，输出 `matched / weak / missing`，并统计 active/paused 目标岗位高频技能；不分析 description，不引入 AI/embedding |
-| 5  | 下一阶段 | 学习闭环        | 基于阶段 4 输出的 `weak_skills / missing_skills` 创建学习任务，维护任务状态，后续再接入知识点和八股题推荐                                                                 |
+| 5  | 已完成  | 学习闭环        | 基于阶段 4 输出的 `weak_skills / missing_skills` 创建学习任务，维护任务状态，支持题目作答/跳过、进度得分、任务归档和用户隔离                                                   |
 | 6  | 未开始  | Cache Aside | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                                       |
 | 7  | 未开始  | Celery 摄入   | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                                          |
 | 8  | 未开始  | 工程化收尾       | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                                                |
@@ -263,9 +264,10 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 阶段 1 先提供轻量 seed 导入，保证系统早期就有岗位数据可查。阶段 2 已完成技能字典与岗位技能关系的基础服务侧能力；阶段 3
 已完成用户工作台闭环，当前用户可维护技能画像、收藏岗位、切换默认收藏夹、设置目标岗位并维护目标状态。阶段 4
 已完成目标岗位技能覆盖分析，当前只基于 `job_post_skills` 与 `user_skills` 做集合计算，不分析
-`job_post_details.description`，不引入 AI/embedding。当前
+`job_post_details.description`，不引入 AI/embedding。阶段 5 已完成学习任务闭环，当前支持手动创建任务、
+从目标岗位 missing/weak 技能缺口生成练习任务、提交作答、跳过题目、进度得分和任务状态流转。当前
 `scripts/seed_jobs.py` 只负责岗位主数据导入，不在脚本内同步技能。后续会在独立 worker /
-编排层中完成“岗位主数据摄入成功后，开启第二个事务同步岗位技能”的生产流程。下一阶段开始实现学习任务闭环，阶段 7 再把摄入流程升级为
+编排层中完成“岗位主数据摄入成功后，开启第二个事务同步岗位技能”的生产流程。下一阶段开始接入缓存，阶段 7 再把摄入流程升级为
 Celery 异步任务和幂等处理。
 
 ## 9. API 路线
@@ -279,7 +281,7 @@ Celery 异步任务和幂等处理。
 | 2  | `GET /skills`、`GET /jobs?skill_ids=1`、`GET /jobs/filter-options`                                                                                                                                                                                                                                                 | 技能字典、岗位详情技能展示、filter-options 技能候选、按技能筛选岗位          |
 | 3  | `/user/skills`、`/jobs/collections/folders`、`/jobs/collections/folders/{folder_id}/default`、`/jobs/collections`、`/jobs/targets`                                                                                                                                                                                   | 用户技能画像、收藏夹、岗位收藏、目标岗位                               |
 | 4  | `GET /jobs/match/jobs/{job_post_id}/coverage`、`GET /jobs/match/targets/{target_id}/coverage`、`GET /jobs/match/targets/skills`                                                                                                                                                                                    | 单岗位技能覆盖、目标岗位技能覆盖、目标岗位技能统计；只基于结构化技能集合计算             |
-| 5  | `POST /learning/study-tasks`、`GET /learning/study-tasks`、`PATCH /learning/study-tasks/{task_id}`、`POST /learning/study-tasks/targets/{target_id}/generate`、`POST /learning/study-tasks/{task_id}/questions/{task_question_id}/attempts`、`POST /learning/study-tasks/{task_id}/questions/{task_question_id}/skip` | 创建学习任务、查询任务、更新任务本体、从目标岗位缺口生成任务、提交作答和跳过题目；进度由作答行为派生 |
+| 5  | `POST /learning/study-tasks`、`GET /learning/study-tasks`、`PATCH /learning/study-tasks/{task_id}`、`DELETE /learning/study-tasks/{task_id}`、`POST /learning/study-tasks/targets/{target_id}/generate`、`POST /learning/study-tasks/{task_id}/questions/{task_question_id}/attempts`、`POST /learning/study-tasks/{task_id}/questions/{task_question_id}/skip` | 创建学习任务、查询任务、更新/归档任务本体、从目标岗位缺口生成任务、提交作答和跳过题目；进度由作答行为派生 |
 | 6  | 无需新增业务 API                                                                                                                                                                                                                                                                                                       | 在岗位详情、热门技能、任务进度等高频读接口接入缓存                          |
 | 7  | `POST /ingestion/tasks`、`GET /ingestion/tasks/{task_id}`、`GET /ingestion/tasks/{task_id}/errors`                                                                                                                                                                                                                 | 创建摄入任务、查询状态、查看错误记录                                 |
 

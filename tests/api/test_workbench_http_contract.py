@@ -150,15 +150,15 @@ async def test_list_user_skills_parses_repeated_statuses_and_skill_ids(
 @pytest.mark.parametrize(
     "params",
     [
-        [("skill_ids", "0")],
-        [("skill_ids", "-1")],
-        [("skill_ids", str(index)) for index in range(1, 52)],
+        (("skill_ids", "0"),),
+        (("skill_ids", "-1"),),
+        tuple(("skill_ids", str(index)) for index in range(1, 52)),
     ],
 )
 @pytest.mark.asyncio
 async def test_list_user_skills_rejects_invalid_skill_ids(
     api_client: httpx.AsyncClient,
-    params: list[tuple[str, str]],
+    params: tuple[tuple[str, str], ...],
 ) -> None:
     """用户技能画像列表 HTTP 层限制 skill_ids 正数且最多 50 个。"""
 

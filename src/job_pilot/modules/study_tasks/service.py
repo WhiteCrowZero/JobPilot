@@ -17,9 +17,10 @@ from job_pilot.modules.study_tasks.contracts import (
     StudyTaskUpdateCommand,
 )
 from job_pilot.modules.study_tasks.exceptions import (
+    NoStudyTaskSkillGapAvailableError,
     StudyTaskNotFoundError,
-    StudyTaskOperationNotImplementedError,
     StudyTaskQuestionNotFoundError,
+    StudyTaskTargetNotFoundError,
 )
 from job_pilot.modules.study_tasks.models import (
     StudyTask,
@@ -33,6 +34,7 @@ from job_pilot.modules.study_tasks.schemas import (
     StudyTaskAttemptResponse,
     StudyTaskDetailResponse,
     StudyTaskGenerationResponse,
+    StudyTaskGenerationSkippedItem,
     StudyTaskListItem,
     StudyTaskListResponse,
     StudyTaskProgressResponse,
@@ -61,6 +63,14 @@ class StudyTaskService:
     ) -> StudyTaskGenerationResponse:
         """根据目标岗位技能缺口生成学习任务。"""
 
+        target = await self.repository.get_current_target_for_generation(
+            db,
+            user_id=user_id,
+            target_id=target_id,
+        )
+        if target is None:
+            raise StudyTaskTargetNotFoundError()
+
         gaps = await self.repository.list_target_skill_gaps(
             db,
             user_id=user_id,
@@ -68,13 +78,18 @@ class StudyTaskService:
             required_level=payload.required_level,
         )
         selected_gaps = self._select_generation_gaps(gaps, payload=payload)
+        if not selected_gaps:
+            raise NoStudyTaskSkillGapAvailableError()
 
         items: list[StudyTaskListItem] = []
         created_count = 0
         reused_count = 0
         skipped_skill_count = 0
+        skipped_items: list[StudyTaskGenerationSkippedItem] = []
 
-        for gap in selected_gaps[: payload.max_tasks]:
+        for gap in selected_gaps:
+            if created_count + reused_count >= payload.max_tasks:
+                break
             question_candidates = await self.repository.list_question_candidates_for_skill(
                 db,
                 skill_id=gap.skill_id,
@@ -83,6 +98,13 @@ class StudyTaskService:
             )
             if not question_candidates:
                 skipped_skill_count += 1
+                skipped_items.append(
+                    StudyTaskGenerationSkippedItem(
+                        skill_id=gap.skill_id,
+                        skill_name=gap.skill_name,
+                        reason="no_question",
+                    )
+                )
                 continue
 
             task, created = await self.repository.create_or_reuse_generated_task(
@@ -103,6 +125,7 @@ class StudyTaskService:
             created_count=created_count,
             reused_count=reused_count,
             skipped_skill_count=skipped_skill_count,
+            skipped_items=skipped_items,
         )
 
     async def list_tasks(
@@ -134,8 +157,6 @@ class StudyTaskService:
         """手动创建当前用户学习任务。"""
 
         task = await self.repository.create_user_task(db, user_id=user_id, payload=payload)
-        if task is None:
-            raise StudyTaskOperationNotImplementedError("Manual study task creation is reserved")
         return self._to_list_item(task)
 
     async def get_task_detail(
@@ -176,6 +197,20 @@ class StudyTaskService:
         task = await self.repository.update_task_metadata(
             db, user_id=user_id, task_id=task_id, payload=payload
         )
+        if task is None:
+            raise StudyTaskNotFoundError()
+        return self._to_update_response(task)
+
+    async def archive_task(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: int,
+        task_id: int,
+    ) -> StudyTaskUpdateResponse:
+        """归档当前用户学习任务。"""
+
+        task = await self.repository.archive_user_task(db, user_id=user_id, task_id=task_id)
         if task is None:
             raise StudyTaskNotFoundError()
         return self._to_update_response(task)

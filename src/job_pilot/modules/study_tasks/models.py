@@ -97,8 +97,8 @@ class StudyTask(UserOwnedMixin, TimestampMixin, Base):
     source: Mapped[StudyTaskSource] = mapped_column(
         enum_column(StudyTaskSource, name="study_task_source", length=40),
         nullable=False,
-        default=StudyTaskSource.SYSTEM_BUILD_IN,
-        server_default=StudyTaskSource.SYSTEM_BUILD_IN.value,
+        default=StudyTaskSource.MANUAL,
+        server_default=StudyTaskSource.MANUAL.value,
         comment="任务来源。",
     )
 
