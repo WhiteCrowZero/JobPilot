@@ -51,8 +51,9 @@ class KnowledgePoint(TimestampMixin, Base):
         CheckConstraint("depth >= 0", name="ck_knowledge_points_depth_non_negative"),
         CheckConstraint("sort_order >= 0", name="ck_knowledge_points_sort_order_non_negative"),
         Index(
-            "ix_knowledge_points_skill_parent_sort",
+            "ix_knowledge_points_active_tree_order",
             "skill_id",
+            "depth",
             "parent_id",
             "sort_order",
             "id",

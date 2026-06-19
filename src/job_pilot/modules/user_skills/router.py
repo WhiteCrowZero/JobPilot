@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.modules.user_skills.contracts import (
@@ -67,7 +67,7 @@ async def list_user_skills(
 
 @router.patch("/{skill_id}", response_model=UserSkillResponse)
 async def update_user_skill(
-    skill_id: int,
+    skill_id: Annotated[int, Path(gt=0)],
     payload: UserSkillUpdate,
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
@@ -92,7 +92,7 @@ async def update_user_skill(
 
 @router.delete("/{skill_id}", response_model=UserSkillResponse)
 async def archive_user_skill(
-    skill_id: int,
+    skill_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
 ) -> UserSkillResponse:

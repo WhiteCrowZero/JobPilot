@@ -6,7 +6,6 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.cache import CacheStore
-from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
@@ -17,6 +16,7 @@ from job_pilot.modules.job_posts.enums import (
     JobPostStatus,
     WorkplaceType,
 )
+from job_pilot.modules.job_posts.exceptions import JobPostNotFoundError
 from job_pilot.modules.job_posts.models import JobPost
 from job_pilot.modules.job_posts.repository import (
     JobPostLookupRepository,
@@ -75,7 +75,7 @@ class JobPostService:
     ) -> JobPostDetailResponse:
         job_post = await self.repository.get_job_post_detail(db=db, job_post_id=job_post_id)
         if job_post is None:
-            raise NotFoundError("Job post not found", code="JOB_POST_NOT_FOUND")
+            raise JobPostNotFoundError()
         list_item = self._to_list_item(job_post)
         detail = job_post.detail
         skill_labels = await self.skill_repository.list_skill_labels_for_job(

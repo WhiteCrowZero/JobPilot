@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.modules.job_targets.contracts import (
@@ -64,7 +64,7 @@ async def list_targets(
 
 @router.patch("/{target_id}", response_model=JobTargetResponse)
 async def update_target(
-    target_id: int,
+    target_id: Annotated[int, Path(gt=0)],
     payload: JobTargetUpdate,
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
@@ -87,7 +87,7 @@ async def update_target(
 
 @router.delete("/{target_id}", response_model=JobTargetResponse)
 async def archive_target(
-    target_id: int,
+    target_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
 ) -> JobTargetResponse:

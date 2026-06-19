@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -54,34 +53,34 @@ class JobCollectionFolderRepository:
         existing_stmt = select(JobCollectionFolder).where(
             JobCollectionFolder.user_id == user_id,
             JobCollectionFolder.is_default.is_(True),
+            JobCollectionFolder.status == JobCollectionFolderStatus.ACTIVE,
         )
         existing_folder = await db.scalar(existing_stmt)
         if existing_folder is not None:
             return existing_folder
 
-        insert_stmt = pg_insert(JobCollectionFolder).values(
-            user_id=user_id,
-            name=DEFAULT_COLLECTION_FOLDER_NAME,
-            sort_order=0,
-            status=JobCollectionFolderStatus.ACTIVE,
-            is_default=True,
-            archived_at=None,
+        return await upsert_restoring_record(
+            db,
+            model=JobCollectionFolder,
+            conflict_constraint="uq_job_collection_folders_user_name",
+            identity_values={
+                "user_id": user_id,
+                "name": DEFAULT_COLLECTION_FOLDER_NAME,
+            },
+            create_values={
+                "sort_order": 0,
+                "is_default": True,
+            },
+            restore_values={
+                "status": JobCollectionFolderStatus.ACTIVE,
+                "archived_at": None,
+            },
+            update_values={
+                "is_default": True,
+                "sort_order": 0,
+                "updated_at": func.now(),
+            },
         )
-        result = await db.execute(
-            insert_stmt.on_conflict_do_update(
-                constraint="uq_job_collection_folders_user_name",
-                set_={
-                    "status": JobCollectionFolderStatus.ACTIVE,
-                    "is_default": True,
-                    "sort_order": 0,
-                    "archived_at": None,
-                    "updated_at": func.now(),
-                },
-            )
-            .returning(JobCollectionFolder)
-            .execution_options(populate_existing=True)
-        )
-        return result.scalar_one()
 
     async def get_user_folder(
         self,

@@ -45,11 +45,17 @@ class JobCollectionFolder(
     __tablename__ = "job_collection_folders"
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_job_collection_folders_user_name"),
+        CheckConstraint(
+            "(status = 'active' AND archived_at IS NULL) "
+            "OR (status = 'archived' AND archived_at IS NOT NULL)",
+            name="ck_job_collection_folders_status_archived_at",
+        ),
         Index(
             "ix_job_collection_folders_user_active_sort",
             "user_id",
             "sort_order",
             text("created_at DESC"),
+            text("id DESC"),
             postgresql_where=text("status = 'active'"),
         ),
         Index(
@@ -119,12 +125,14 @@ class JobCollection(UserOwnedMixin, TimestampMixin, Base):
             "user_id",
             "folder_id",
             text("collected_at DESC"),
+            text("id DESC"),
             postgresql_where=text("status = 'active'"),
         ),
         Index(
             "ix_job_collections_user_active_collected_at",
             "user_id",
             text("collected_at DESC"),
+            text("id DESC"),
             postgresql_where=text("status = 'active'"),
         ),
         {"comment": "用户岗位收藏表，记录用户对岗位的兴趣关系和取消状态。"},

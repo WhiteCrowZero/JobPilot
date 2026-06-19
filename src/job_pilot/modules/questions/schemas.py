@@ -24,9 +24,9 @@ class QuestionSearchParams(PageParams):
     """
 
     keyword: str | None = Field(default=None, max_length=100)
-    question_types: list[QuestionType] | None = Field(default=None, max_length=10)
-    difficulties: list[QuestionDifficulty] | None = Field(default=None, max_length=10)
-    source_types: list[ContentSourceType] | None = Field(default=None, max_length=10)
+    question_types: list[QuestionType] | None = Field(default=None, max_length=4)
+    difficulties: list[QuestionDifficulty] | None = Field(default=None, max_length=3)
+    source_types: list[ContentSourceType] | None = Field(default=None, max_length=2)
     skill_ids: list[PositiveId] | None = Field(default=None, max_length=50)
     knowledge_point_id: PositiveId | None = None
     sort: QuestionSort = "created_at_desc"

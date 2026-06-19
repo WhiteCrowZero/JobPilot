@@ -174,6 +174,26 @@ async def test_list_user_skills_rejects_invalid_skill_ids(
 
 
 @pytest.mark.asyncio
+async def test_create_user_skill_rejects_future_last_used_at(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """用户技能画像不允许把最近使用日期写到未来。"""
+
+    headers = await register_test_user_headers(api_client, prefix="user-skill-date")
+
+    response = await api_client.post(
+        USER_SKILLS_ENDPOINT,
+        json={
+            "skill_id": 1,
+            "last_used_at": "2999-01-01",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_list_collections_rejects_invalid_folder_id(
     api_client: httpx.AsyncClient,
 ) -> None:

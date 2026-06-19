@@ -134,6 +134,29 @@ async def test_create_study_task_rejects_duplicate_question_ids(
 
 
 @pytest.mark.asyncio
+async def test_create_study_task_rejects_due_date_before_start_date(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """手动创建学习任务时计划开始日期不能晚于完成日期。"""
+
+    headers = await register_study_task_user_headers(api_client, prefix="study-create-date")
+
+    response = await api_client.post(
+        STUDY_TASKS_ENDPOINT,
+        json={
+            "skill_id": 1,
+            "title": "Practice Python basics",
+            "planned_start_date": "2026-06-10",
+            "due_date": "2026-06-01",
+            "question_ids": [1],
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_generate_study_tasks_from_missing_target_returns_not_found(
     api_client: httpx.AsyncClient,
 ) -> None:
@@ -207,6 +230,26 @@ async def test_submit_attempt_rejects_mixed_answer_payload(
     response = await api_client.post(
         study_task_question_attempts_endpoint(1, 1),
         json={"selected_option_ids": [1], "answer_text": "mixed payload"},
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_submit_attempt_rejects_too_large_duration(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """作答耗时字段需要有明确上限。"""
+
+    headers = await register_study_task_user_headers(api_client, prefix="study-attempt-duration")
+
+    response = await api_client.post(
+        study_task_question_attempts_endpoint(1, 1),
+        json={
+            "selected_option_ids": [1],
+            "duration_seconds": 86_401,
+        },
         headers=headers,
     )
 

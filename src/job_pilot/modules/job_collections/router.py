@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
 from job_pilot.modules.job_collections.contracts import (
@@ -55,7 +55,7 @@ async def list_collection_folders(
 
 @router.patch("/folders/{folder_id}", response_model=JobCollectionFolderResponse)
 async def update_collection_folder(
-    folder_id: int,
+    folder_id: Annotated[int, Path(gt=0)],
     payload: JobCollectionFolderUpdate,
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
@@ -75,7 +75,7 @@ async def update_collection_folder(
 
 @router.post("/folders/{folder_id}/default", response_model=JobCollectionFolderResponse)
 async def set_default_collection_folder(
-    folder_id: int,
+    folder_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
 ) -> JobCollectionFolderResponse:
@@ -89,7 +89,7 @@ async def set_default_collection_folder(
 
 @router.delete("/folders/{folder_id}", response_model=JobCollectionFolderResponse)
 async def archive_collection_folder(
-    folder_id: int,
+    folder_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
 ) -> JobCollectionFolderResponse:
@@ -141,7 +141,7 @@ async def list_collections(
 
 @router.patch("/{collection_id}", response_model=JobCollectionResponse)
 async def update_collection(
-    collection_id: int,
+    collection_id: Annotated[int, Path(gt=0)],
     payload: JobCollectionUpdate,
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
@@ -161,7 +161,7 @@ async def update_collection(
 
 @router.delete("/{collection_id}", response_model=JobCollectionResponse)
 async def remove_collection(
-    collection_id: int,
+    collection_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
 ) -> JobCollectionResponse:

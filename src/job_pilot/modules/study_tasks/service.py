@@ -45,6 +45,7 @@ from job_pilot.modules.study_tasks.schemas import (
     StudyTaskSnapshotResponse,
     StudyTaskUpdateResponse,
 )
+from job_pilot.modules.user_skills.enums import UserSkillProficiencyLevel
 
 
 class StudyTaskService:
@@ -367,8 +368,16 @@ class StudyTaskService:
             company_name_snapshot=snapshot.company_name_snapshot,
             target_title_snapshot=snapshot.target_title_snapshot,
             match_status_snapshot=snapshot.match_status_snapshot,
-            required_level_snapshot=snapshot.required_level_snapshot,
-            user_level_snapshot=snapshot.user_level_snapshot,
+            required_level_snapshot=(
+                UserSkillProficiencyLevel(snapshot.required_level_snapshot)
+                if snapshot.required_level_snapshot is not None
+                else None
+            ),
+            user_level_snapshot=(
+                UserSkillProficiencyLevel(snapshot.user_level_snapshot)
+                if snapshot.user_level_snapshot is not None
+                else None
+            ),
             is_primary_target_snapshot=snapshot.is_primary_target_snapshot,
             target_priority_snapshot=snapshot.target_priority_snapshot,
         )

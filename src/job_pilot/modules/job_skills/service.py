@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_skills.contracts import (
@@ -11,6 +10,7 @@ from job_pilot.modules.job_skills.contracts import (
     SkillNormalizationResult,
     SkillSyncResult,
 )
+from job_pilot.modules.job_skills.exceptions import JobPostForSkillSyncNotFoundError
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     normalize_skill_alias,
@@ -115,7 +115,7 @@ class JobSkillSyncService:
         """
 
         if not await self.repository.job_post_exists(db=db, job_post_id=job_post_id):
-            raise NotFoundError("Job post not found", code="JOB_POST_NOT_FOUND")
+            raise JobPostForSkillSyncNotFoundError()
 
         # 注意此处的业务设计就是空技能时，如果之前已有技能关系，旧标签不会清掉
         if not candidates:

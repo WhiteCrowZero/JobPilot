@@ -71,6 +71,7 @@ class StudyTask(UserOwnedMixin, TimestampMixin, Base):
             "priority",
             "due_date",
             text("created_at DESC"),
+            text("id DESC"),
         ),
         Index("ix_study_tasks_user_skill_status", "user_id", "skill_id", "status"),
         Index(
@@ -195,7 +196,6 @@ class StudyTaskSnapshot(TimestampMixin, Base):
             "user_level_snapshot IS NULL OR user_level_snapshot BETWEEN 1 AND 5",
             name="ck_study_task_snapshots_user_level_range",
         ),
-        Index("ix_study_task_snapshots_target_job", "target_id", "job_post_id"),
         {"comment": "学习任务生成时的岗位、目标、技能缺口上下文快照。"},
     )
 
@@ -278,7 +278,6 @@ class StudyTaskProgress(TimestampMixin, Base):
             "score IS NULL OR (score >= 0 AND score <= 100)",
             name="ck_study_task_progress_score_range",
         ),
-        Index("ix_study_task_progress_user_updated", "user_id", text("updated_at DESC")),
         {"comment": "学习任务整体进度聚合表。"},
     )
 
@@ -289,7 +288,6 @@ class StudyTaskProgress(TimestampMixin, Base):
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="所属用户 ID。",
     )
     study_task_id: Mapped[int] = mapped_column(
@@ -466,7 +464,6 @@ class StudyTaskQuestionAttempt(TimestampMixin, Base):
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="所属用户 ID。",
     )
     study_task_id: Mapped[int] = mapped_column(

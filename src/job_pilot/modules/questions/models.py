@@ -47,17 +47,18 @@ class Question(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("question_hash", name="uq_questions_question_hash"),
         Index(
-            "ix_questions_active_type_difficulty_id",
-            "question_type",
-            "difficulty",
-            "id",
+            "ix_questions_active_created_at_id",
+            text("created_at DESC"),
+            text("id DESC"),
             postgresql_where=text("status = 'active' AND review_status = 'approved'"),
         ),
         Index(
-            "ix_questions_source_review_status",
-            "source_type",
-            "review_status",
-            "id",
+            "ix_questions_active_type_difficulty_created",
+            "question_type",
+            "difficulty",
+            text("created_at DESC"),
+            text("id DESC"),
+            postgresql_where=text("status = 'active' AND review_status = 'approved'"),
         ),
         {"comment": "公共题目表，支持面试开放题、选择题（单选和多选）、判断题。"},
     )
@@ -178,7 +179,6 @@ class QuestionOption(TimestampMixin, Base):
             "question_id", "sort_order", name="uq_question_options_question_sort_order"
         ),
         CheckConstraint("sort_order >= 0", name="ck_question_options_sort_order_non_negative"),
-        Index("ix_question_options_question_correct", "question_id", "is_correct"),
         {"comment": "题目选项表，支持单选、多选、判断题。"},
     )
 
@@ -251,12 +251,12 @@ class QuestionAnswer(TimestampMixin, Base):
             postgresql_where=text("source_type = 'official'"),
         ),
         Index(
-            "ix_question_answers_question_status_source",
+            "ix_question_answers_question_active_source_created",
             "question_id",
-            "status",
             "source_type",
             text("created_at DESC"),
-            "id",
+            text("id DESC"),
+            postgresql_where=text("status = 'active'"),
         ),
         {"comment": "题目答案表，支持同一题多个答案版本。"},
     )

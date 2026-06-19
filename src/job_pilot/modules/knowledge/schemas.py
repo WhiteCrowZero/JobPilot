@@ -46,7 +46,7 @@ class KnowledgePointSearchParams(PageParams):
 
     keyword: str | None = Field(default=None, max_length=100)
     skill_id: int | None = Field(default=None, ge=1)
-    levels: list[KnowledgePointLevel] | None = Field(default=None, max_length=10)
+    levels: list[KnowledgePointLevel] | None = Field(default=None, max_length=3)
     sort: KnowledgePointSort = "updated_at_desc"
 
 

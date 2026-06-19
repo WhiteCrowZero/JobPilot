@@ -607,6 +607,11 @@ class StudyTaskRepository:
         db.add(attempt)
         await db.flush()
 
+        progress = await self._get_or_create_progress(
+            db,
+            user_id=user_id,
+            task_id=task.id,
+        )
         total_question_count = await self._count_task_questions(db, task_id=task.id)
         completed_question_count = await self._count_completed_task_questions(
             db,
@@ -620,11 +625,6 @@ class StudyTaskRepository:
             completed_question_count >= total_question_count
         )
 
-        progress = await self._get_or_create_progress(
-            db,
-            user_id=user_id,
-            task_id=task.id,
-        )
         progress.total_question_count = total_question_count
         progress.completed_question_count = completed_question_count
         progress.practiced_count += 1

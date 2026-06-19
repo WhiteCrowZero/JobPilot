@@ -4,9 +4,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from job_pilot.core.pagination import PageParams, PageResult
+from job_pilot.core.schema_validators import validate_business_date, validate_date_order
 from job_pilot.modules.questions.enums import QuestionDifficulty, QuestionType
 from job_pilot.modules.study_tasks.enums import (
     StudyTaskQuestionResult,
@@ -15,8 +16,11 @@ from job_pilot.modules.study_tasks.enums import (
     StudyTaskStatus,
     StudyTaskType,
 )
+from job_pilot.modules.user_skills.enums import UserSkillProficiencyLevel
 
 PositiveId = Annotated[int, Field(gt=0)]
+MAX_TASK_MINUTES = 10_080
+MAX_ATTEMPT_DURATION_SECONDS = 86_400
 
 
 class StudyTaskGenerateFromTargetRequest(BaseModel):
@@ -28,7 +32,7 @@ class StudyTaskGenerateFromTargetRequest(BaseModel):
     include_weak_skills: bool = True
     include_missing_skills: bool = True
     due_days: int | None = Field(default=7, ge=1, le=365)
-    required_level: int = Field(default=3, ge=1, le=5)
+    required_level: UserSkillProficiencyLevel = UserSkillProficiencyLevel.WORK_READY
 
     @model_validator(mode="after")
     def validate_gap_scope(self) -> Self:
@@ -47,26 +51,41 @@ class StudyTaskCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
     priority: int = Field(default=3, ge=1, le=5)
-    estimated_minutes: int | None = Field(default=None, gt=0)
+    estimated_minutes: int | None = Field(default=None, gt=0, le=MAX_TASK_MINUTES)
     planned_start_date: date | None = None
     due_date: date | None = None
     question_ids: list[PositiveId] | None = Field(default=None, max_length=50)
 
+    @field_validator("planned_start_date", "due_date")
+    @classmethod
+    def validate_task_date(
+        cls,
+        value: date | None,
+        info: ValidationInfo,
+    ) -> date | None:
+        return validate_business_date(value, field_name=info.field_name or "task_date")
+
     @model_validator(mode="after")
-    def validate_question_ids(self) -> Self:
-        """手动绑定题目时校验练习任务题目列表。"""
+    def validate_task_payload(self) -> Self:
+        """校验手动任务的日期和题目列表。"""
 
         if self.task_type == StudyTaskType.QUESTION_PRACTICE and not self.question_ids:
             raise ValueError("question_practice task requires question_ids")
         if self.question_ids is not None and len(set(self.question_ids)) != len(self.question_ids):
             raise ValueError("question_ids must be unique")
+        validate_date_order(
+            self.planned_start_date,
+            self.due_date,
+            start_name="planned_start_date",
+            end_name="due_date",
+        )
         return self
 
 
 class StudyTaskListParams(PageParams):
     """学习任务列表查询参数。"""
 
-    statuses: list[StudyTaskStatus] | None = None
+    statuses: list[StudyTaskStatus] | None = Field(default=None, max_length=4)
     skill_ids: list[PositiveId] | None = Field(default=None, max_length=50)
 
 
@@ -77,10 +96,31 @@ class StudyTaskUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=1000)
     priority: int | None = Field(default=None, ge=1, le=5)
-    estimated_minutes: int | None = Field(default=None, gt=0)
-    actual_minutes: int | None = Field(default=None, ge=0)
+    estimated_minutes: int | None = Field(default=None, gt=0, le=MAX_TASK_MINUTES)
+    actual_minutes: int | None = Field(default=None, ge=0, le=MAX_TASK_MINUTES)
     planned_start_date: date | None = None
     due_date: date | None = None
+
+    @field_validator("planned_start_date", "due_date")
+    @classmethod
+    def validate_task_date(
+        cls,
+        value: date | None,
+        info: ValidationInfo,
+    ) -> date | None:
+        return validate_business_date(value, field_name=info.field_name or "task_date")
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> Self:
+        """校验计划开始日期不能晚于计划完成日期。"""
+
+        validate_date_order(
+            self.planned_start_date,
+            self.due_date,
+            start_name="planned_start_date",
+            end_name="due_date",
+        )
+        return self
 
 
 class StudyTaskQuestionAttemptRequest(BaseModel):
@@ -88,7 +128,7 @@ class StudyTaskQuestionAttemptRequest(BaseModel):
 
     selected_option_ids: list[PositiveId] | None = Field(default=None, max_length=20)
     answer_text: str | None = Field(default=None, min_length=1, max_length=4000)
-    duration_seconds: int | None = Field(default=None, ge=0)
+    duration_seconds: int | None = Field(default=None, ge=0, le=MAX_ATTEMPT_DURATION_SECONDS)
 
     @model_validator(mode="after")
     def validate_answer_payload(self) -> Self:
@@ -108,7 +148,7 @@ class StudyTaskQuestionAttemptRequest(BaseModel):
 class StudyTaskQuestionSkipRequest(BaseModel):
     """跳过任务内题目请求。"""
 
-    duration_seconds: int | None = Field(default=None, ge=0)
+    duration_seconds: int | None = Field(default=None, ge=0, le=MAX_ATTEMPT_DURATION_SECONDS)
 
 
 class StudyTaskProgressResponse(BaseModel):
@@ -184,8 +224,8 @@ class StudyTaskSnapshotResponse(BaseModel):
     company_name_snapshot: str | None
     target_title_snapshot: str | None
     match_status_snapshot: str | None
-    required_level_snapshot: int | None = Field(default=None, ge=1, le=5)
-    user_level_snapshot: int | None = Field(default=None, ge=1, le=5)
+    required_level_snapshot: UserSkillProficiencyLevel | None = None
+    user_level_snapshot: UserSkillProficiencyLevel | None = None
     is_primary_target_snapshot: bool | None
     target_priority_snapshot: int | None
 

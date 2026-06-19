@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from job_pilot.api.deps import JobPilotDep
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
@@ -37,7 +37,10 @@ async def read_job_post_filter_options(
 
 
 @router.get("/{job_post_id}", response_model=JobPostDetailResponse)
-async def read_job_post_detail(job_post_id: int, pilot: JobPilotDep) -> JobPostDetailResponse:
+async def read_job_post_detail(
+    job_post_id: Annotated[int, Path(gt=0)],
+    pilot: JobPilotDep,
+) -> JobPostDetailResponse:
     """读取岗位详情。"""
 
     return await pilot.job_posts.get_detail(job_post_id=job_post_id)

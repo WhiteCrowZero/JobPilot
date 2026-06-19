@@ -5,8 +5,8 @@ from typing import cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.core.exceptions import NotFoundError
 from job_pilot.modules.job_skills.contracts import RawSkillCandidate, SkillAliasMatch
+from job_pilot.modules.job_skills.exceptions import JobPostForSkillSyncNotFoundError
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     extract_raw_skill_candidates,
@@ -202,7 +202,7 @@ async def test_sync_from_raw_candidates_rejects_missing_job_post() -> None:
         repository=FakeJobPostSkillRepository(job_post_exists=False),
     )
 
-    with pytest.raises(NotFoundError) as exc_info:
+    with pytest.raises(JobPostForSkillSyncNotFoundError) as exc_info:
         await service.sync_from_raw_candidates(
             db=cast(AsyncSession, object()),
             job_post_id=999_999,

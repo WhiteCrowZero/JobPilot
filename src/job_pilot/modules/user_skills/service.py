@@ -10,6 +10,10 @@ from job_pilot.modules.user_skills.contracts import (
     UserSkillUpdateCommand,
     UserSkillUpsertCommand,
 )
+from job_pilot.modules.user_skills.enums import (
+    UserSkillInterestLevel,
+    UserSkillProficiencyLevel,
+)
 from job_pilot.modules.user_skills.exceptions import (
     StandardSkillNotFoundError,
     UserSkillNotFoundError,
@@ -154,8 +158,8 @@ class UserSkillService:
             skill_id=user_skill.skill_id,
             status=user_skill.status,
             source=user_skill.source,
-            proficiency_level=user_skill.proficiency_level,
-            interest_level=user_skill.interest_level,
+            proficiency_level=UserSkillProficiencyLevel(user_skill.proficiency_level),
+            interest_level=UserSkillInterestLevel(user_skill.interest_level),
             years_of_experience=user_skill.years_of_experience,
             last_used_at=user_skill.last_used_at,
             evidence=user_skill.evidence,
