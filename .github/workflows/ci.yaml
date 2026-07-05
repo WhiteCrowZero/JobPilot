@@ -14,8 +14,8 @@ jobs:
       DATABASE_URL: "postgresql+asyncpg://jobpilot:jobpilot@127.0.0.1:5433/jobpilot_test"
       TEST_DATABASE_URL: "postgresql+asyncpg://jobpilot:jobpilot@127.0.0.1:5433/jobpilot_test"
       REDIS_URL: "redis://:jobpilot_redis@127.0.0.1:6379/0"
-      CELERY_BROKER_URL: "redis://:jobpilot_redis@127.0.0.1:6379/1"
-      CELERY_RESULT_BACKEND: "redis://:jobpilot_redis@127.0.0.1:6379/2"
+      CELERY_BROKER_URL: "amqp://jobpilot:jobpilot_rabbitmq@127.0.0.1:5672//"
+      CELERY_RESULT_BACKEND: "redis://:jobpilot_redis@127.0.0.1:6379/1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -38,7 +38,7 @@ jobs:
         run: docker compose -f deploy/docker-compose.yml config
 
       - name: Start test services
-        run: docker compose -f deploy/docker-compose.yml up -d --wait postgres_test redis
+        run: docker compose -f deploy/docker-compose.yml up -d --wait postgres_test redis rabbitmq
 
       - name: Run migrations
         run: uv run alembic upgrade head

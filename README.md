@@ -1,35 +1,40 @@
 # JobPilot
 
-> **招聘岗位情报与求职准备平台**。本项目不是投递管理系统，也不是重 AI 项目；核心目标是通过一个真实业务闭环，集中展示 *
-*Python 后端开发能力**：认证鉴权、数据建模、复杂查询、缓存、异步任务、幂等、测试、迁移和容器化部署。
+> **招聘岗位情报与求职准备平台**。本项目不是投递管理系统，也不是重 AI
+> 项目；项目目标是让真实代码逐步对齐简历标准版本，围绕“岗位采集 → 岗位导入 → 技能匹配 → 学习任务生成”的闭环集中展示 *
+*Python
+后端开发能力**：认证鉴权、会话管理、数据建模、异步任务、幂等处理、用户数据隔离、测试与 Docker 部署。
 
 ## 1. 项目定位
 
 JobPilot 面向求职者和后端学习场景，围绕招聘岗位数据建立“岗位情报 → 技能分析 → 学习准备”的业务闭环：
 
 ```text
-外部岗位数据进入系统
-  -> 清洗、去重、结构化存储
-  -> 岗位搜索、筛选、技能标签统计
-  -> 用户收藏岗位、设为目标岗位
-  -> 对比岗位技能与用户技能画像
-  -> 生成学习任务、推荐八股题
-  -> 记录题目掌握状态和学习进度
+Scrapy 爬虫采集岗位
+  -> Celery + RabbitMQ 投递岗位导入任务
+  -> Worker 消费任务并写入 RawJobRecord
+  -> 字段规范化、fingerprint 去重、JobPost upsert
+  -> 技能抽取与 JobPostSkill 同步
+  -> 用户设为目标岗位、维护 UserSkill
+  -> 基于 skill_id + level 计算 matched / weak / missing
+  -> 根据技能缺口生成学习任务和题目练习
+  -> 作答后更新任务进度，并按规则调整用户技能评级
 ```
 
 项目边界：
 
-- **不是投递系统**：不管理 `applied / offer / rejected` 等投递状态，岗位投递跳转到原平台。
-- **不是重 AI 项目**：AI 只作为后续增强，MVP 先用规则词典实现技能提取和匹配分析。
-- **不是爬虫项目**：爬虫只是数据来源适配器，MVP 先用 seed 脚本准备岗位数据。
-- **重后端工程能力**：重点在数据库设计、业务建模、权限隔离、查询性能、缓存、异步任务、测试和部署。
+- **不做投递流转**：不管理 `applied / offer / rejected` 等投递状态，岗位投递跳转到原平台。
+- **不把 AI 作为主链路依赖**：当前学习任务生成以规则和题库为主，保证稳定、可解释、可测试。
+- **爬虫是数据源适配器，不是项目主体**：本轮重点是打通爬虫与后端的 MQ 异步链路，而不是建设完整爬虫平台。
+- **简历目标优先**：后续开发围绕简历中的强表述补齐代码证据、测试证据和演示链路。
 
 ## 2. 技术栈
 
 - **后端框架**：FastAPI、Pydantic v2
 - **数据库**：PostgreSQL、SQLAlchemy 2.0、Alembic
-- **缓存与任务**：Redis、Celery
-- **认证安全**：JWT、Refresh Token
+- **缓存与异步**：Redis、RabbitMQ、Celery
+- **认证安全**：JWT Access Token、Refresh Token、User Session、Access Token Blacklist
+- **搜索与后台增强**：Elasticsearch、Admin 后台（后续看时间）
 - **测试与质量**：pytest、pytest-asyncio、httpx、ruff、pyright
 - **部署环境**：Docker Compose、uv
 
@@ -37,208 +42,158 @@ JobPilot 面向求职者和后端学习场景，围绕招聘岗位数据建立�
 
 ```text
 src/job_pilot/modules/
-  auth/             # 注册、登录、JWT access/refresh token、密码凭证
+  auth/             # 注册、登录、JWT access/refresh token、UserSession、会话撤销
   users/            # 用户资料、用户状态、当前用户读取
-  job_posts/        # 岗位主数据、搜索筛选、详情查询、去重
+  job_posts/        # 岗位主数据、搜索筛选、详情查询、fingerprint 去重
   job_skills/       # 技能字典、别名归一、岗位技能关系、按技能筛选
+  ingestion/        # RawJobRecord、导入幂等、字段规范化、错误记录、重放入口
   job_collections/  # 用户收藏岗位
   job_targets/      # 用户目标岗位，表示“我要围绕这个岗位准备”
-  user_skills/      # 用户技能画像和掌握程度
+  user_skills/      # 用户技能画像、mastery_score、proficiency_level
   job_match/        # 岗位技能与用户技能差距分析
   study_tasks/      # 学习任务，围绕目标岗位和缺失技能生成
   knowledge/        # 知识点、技能分类、学习资料
   questions/        # 八股题、题目掌握记录、练习记录
-  ingestion/        # 系统级岗位数据摄入、清洗、去重、错误记录
   system/           # 健康检查、后台任务、缓存、日志等系统模块
 ```
 
-MVP 阶段只实现核心闭环，不强行完成所有模块。模块目录先作为领域边界存在，具体实现按开发路线逐步补齐。
+```text
+src/job_pilot/workers/
+  celery_app.py       # Celery 初始化、队列、路由、重试策略
+  tasks/              # import_raw_job、sync_job_skills、retry_failed_raw_job 等任务
+```
 
-**当前实现状态**
+## 4. 当前实现状态与下一阶段
 
-| 阶段 | 状态   | 说明                                                                                      | 学习文档                                    |
-|----|------|-----------------------------------------------------------------------------------------|-----------------------------------------|
-| 0  | 已完成  | 用户注册、登录、JWT access/refresh token、当前用户、logout                                            | `docs/八股文档/阶段0-用户注册与认证.md`              |
-| 1  | 已完成  | 岗位 raw 摄入、规范化入库、fingerprint 去重、列表/详情/筛选、分页、filter-options 缓存                            | `docs/八股文档/阶段1-岗位主数据与搜索.md`             |
-| 2  | 基础完成 | 技能字典、技能别名、岗位技能关系、按技能筛选、filter-options 技能候选；生产级 worker 编排后续补齐                            | `docs/ai_report/skill_phase2_review.md` |
-| 3  | 已完成  | 用户收藏岗位、收藏夹、目标岗位、用户技能画像、用户数据隔离、工作台索引优化                                                   | `docs/ai_report/用户工作台*.md`              |
-| 4  | 已完成  | 目标岗位技能覆盖分析：基于 job_post_skills 与 user_skills 做 matched / weak / missing 集合计算，并统计目标岗位高频技能 | `docs/ai_report/阶段4-目标岗位技能覆盖分析收口评估.md`  |
-| 5  | 已完成  | 学习任务闭环：手动创建任务、从目标岗位技能缺口生成练习任务、作答/跳过、进度与得分、任务状态流转、用户数据隔离                                 | 暂不新增汇报文档                                |
+| 阶段   | 状态        | 说明                                                                                             |
+|------|-----------|------------------------------------------------------------------------------------------------|
+| 阶段 0 | 已完成，待增强   | 已有注册、登录、JWT access/refresh token、当前用户、logout；下一步补 `user_sessions` 表、refresh rotation 与设备级会话管理。 |
+| 阶段 1 | 已完成       | 岗位 raw 摄入、规范化入库、fingerprint 去重、岗位列表/详情/筛选、分页、filter-options 缓存。                                |
+| 阶段 2 | 基础完成，待联调  | 技能字典、技能别名、岗位技能关系、按技能筛选、岗位详情技能展示；下一步接入 Worker 编排，让岗位导入后自动同步 `JobPostSkill`。                     |
+| 阶段 3 | 已完成       | 收藏夹、岗位收藏、目标岗位、用户技能画像、用户数据隔离。                                                                   |
+| 阶段 4 | 已完成，待策略加强 | 已有 matched / weak / missing 技能差距分析；下一步统一 `skill_id + level` 匹配策略，并打通任务生成。                      |
+| 阶段 5 | 已完成，待闭环联调 | 已有知识点、题库、学习任务、作答/跳过、进度得分；下一步接入技能差距结果，并补用户技能评级更新策略。                                             |
+| 阶段 6 | 重点待做      | UserSession 表与会话管理。                                                                            |
+| 阶段 7 | 重点待做      | Celery + RabbitMQ 异步链路，爬虫与后端联调，岗位导入 Worker。                                                    |
+| 阶段 8 | 重点待做      | 测试补强、代码质量审查、Docker 部署收口。                                                                       |
+| 阶段 9 | 看时间       | 第三方登录、Elasticsearch、Admin、线上监控、前端页面。                                                           |
 
-## 4. MVP 范围
+## 5. 本轮开发范围
 
-本项目采用“技术学习型 MVP”原则：MVP 不是功能最少的 CRUD
-原型，而是能体现后端工程能力的最小闭环；表结构和模块边界应贴近真实业务并保留合理扩展点，但每个阶段只实现当前主线必需的最小行为，避免一次性引入完整第三方登录、审计、设备管理、风控等复杂功能。
+### 5.1 必做范围
 
-MVP 保留：
+1. **添加 UserSession 表，支持会话管理**
+    - 支持多设备登录、当前设备退出、全部设备退出、refresh token rotation、access token blacklist。
+    - `Access Token` 与 `Refresh Token` 都携带 `session_jti`，服务端以 `user_sessions` 作为长期可信状态。
 
-1. **用户认证**：注册、登录、当前用户、refresh token、logout。
-    - auth
-    - user
-2. **岗位情报池**：岗位列表、详情、关键词/城市/薪资/技能筛选、fingerprint 去重。
-    - job_posts
-    - ingestion
-3. **岗位技能**：维护标准技能字典和别名，支持岗位技能关系同步、岗位详情展示和按技能筛选。
-    - job_skills
-4. **用户工作台**：收藏岗位、设为目标岗位、维护个人技能画像。
-    - job_collections
-    - job_targets
-    - user_skills
-5. **技能差距分析**：基于结构化岗位技能和用户技能画像输出 `matched / weak / missing`，并统计目标岗位高频技能。
-    - job_match
-6. **学习准备闭环**：根据缺失技能创建学习任务，推荐八股题，记录掌握状态。
-    - study_tasks
-    - knowledge
-    - questions
+2. **添加 Celery + RabbitMQ，奠定异步链路基础**
+    - RabbitMQ 作为 broker，Redis 继续用于缓存和 result backend。
+    - Worker 负责岗位导入、技能同步、失败重试与后续任务扩展。
 
-MVP 暂不做：
+3. **联调爬虫和后端，跑通核心业务闭环**
+    - 爬虫采集岗位并投递 MQ。
+    - Worker 消费岗位消息并完成 RawJobRecord 落库、规范化、JobPost upsert、JobPostSkill 同步。
+    - 用户目标岗位进入技能匹配，基于 `skill_id + level` 生成 matched / weak / missing。
+    - 学习任务根据 weak / missing 技能生成，并在作答后更新用户技能评级。
 
-- 真实爬虫、RAG、AI 模拟面试、简历深度分析。
-- 投递状态管理、offer/rejected 状态流转。
-- Kafka、Kubernetes、WebSocket、复杂 RBAC、复杂监控。
+4. **完善测试、代码质量审查、Docker 部署**
+    - 补充认证会话、异步导入、重复消费、技能匹配、学习任务生成、用户隔离等测试。
+    - 统一运行 `ruff / pyright / pytest`。
+    - Docker Compose 至少能启动 PostgreSQL、Redis、RabbitMQ、API、Worker。
 
-## 5. 模块表归属
+### 5.2 看时间增强
 
-后续新增表时，优先按下面的归属放到对应模块，避免跨模块边界混乱：
+1. 第三方登录：OAuth2 登录入口，作为 auth 域增强。
+2. Elasticsearch：替换岗位关键词搜索与复杂筛选中的文本检索部分。
+3. Admin：岗位导入管理、失败记录重放、题库/知识点维护。
+4. 线上监控：Prometheus / Grafana / 日志采集 / 基础告警。
+5. 前端页面：优先做演示闭环页面，不做复杂交互。
 
-| 模块                | 核心表                                                                 | 职责边界                                         |
-|-------------------|---------------------------------------------------------------------|----------------------------------------------|
-| `auth`            | `auth_identities`、`auth_password_credentials`                       | 登录身份、密码哈希、JWT token 签发与校验                    |
-| `users`           | `users`、`user_profiles`                                             | 用户主体、用户状态、超级用户标记、公开资料                        |
-| `job_posts`       | `job_posts`、`job_sources`、`job_post_details`                        | 岗位主数据、来源链接、fingerprint 去重、搜索筛选               |
-| `job_skills`      | `skills`、`skill_aliases`、`job_post_skills`                          | 技能字典、技能别名、岗位技能关系、岗位技能筛选                      |
-| `ingestion`       | `ingestion_tasks`、`raw_job_records`、`ingestion_errors`              | 外部岗位数据摄入、清洗、错误记录、幂等入库                        |
-| `job_collections` | `job_collection_folders`、`job_collections`                          | 用户收藏夹、默认收藏夹、岗位收藏，必须按 `user_id` 隔离            |
-| `job_targets`     | `job_targets`                                                       | 用户目标岗位、准备状态、优先级、主目标、收藏来源                     |
-| `user_skills`     | `user_skills`                                                       | 用户技能画像和掌握程度                                  |
-| `job_match`       | 当前不建表                                                               | 读取岗位技能、目标岗位和用户技能，输出 skill coverage 与目标岗位技能频率 |
-| `study_tasks`     | `study_tasks`、`study_task_snapshots`、`study_task_progress`、`study_task_questions`、`study_task_question_attempts` | 围绕目标岗位和缺失技能生成学习任务、题目动作和进度聚合 |
-| `knowledge`       | `knowledge_points`                                                   | 公共知识点树和知识点搜索                                  |
-| `questions`       | `questions`、`question_options`、`question_answers`、`question_skills` | 公共题库、选项、答案和题目技能关系                            |
+### 5.3 本轮明确不做
 
-`system` 不作为核心业务表归属模块。健康检查、缓存、日志、后台任务等横切能力优先放在 `api/`、`core/`、`workers/` 中。
+- 额度、VIP、AI 调用扣费和 quota 预扣方案。
+- 复杂 RBAC、完整审计系统、微服务拆分。
+- Kubernetes、Kafka、WebSocket、复杂 Agent / RAG。
 
-## 6. 面试引导点
+## 6. 模块表归属
 
-本项目用于从业务场景引导后端八股：
-
-- 用户登录：JWT、refresh token、密码哈希、鉴权授权。
-- 岗位去重：唯一约束、索引、并发插入、幂等。
-- 岗位筛选：动态 SQL、联合索引、分页、慢查询。
-- 技能标签：一对多、多对多、JSON 字段与关系表取舍。
-- 用户数据隔离：越权访问、user_id 查询条件、权限依赖。
-- 用户工作台：软删除、归档恢复、默认收藏夹、主目标唯一、状态时间字段。
-- 技能覆盖分析：集合交集、matched/weak/missing、无数据不打分、越权访问防护。
-- 缓存：Redis、Cache Aside、缓存穿透/击穿/雪崩。
-- 异步摄入：Celery、消息队列、任务状态、失败重试、重复消费。
-- 测试部署：pytest、测试数据库隔离、Alembic、Docker Compose。
+| 模块                | 核心表                                                                                                              | 职责边界                                                      |
+|-------------------|------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| `auth`            | `auth_identities`、`auth_password_credentials`、`user_sessions`                                                    | 登录身份、密码哈希、token 签发、refresh rotation、设备会话、token blacklist。 |
+| `users`           | `users`、`user_profiles`                                                                                          | 用户主体、用户状态、超级用户标记、公开资料。                                    |
+| `job_posts`       | `job_posts`、`job_sources`、`job_post_details`                                                                     | 岗位主数据、来源链接、fingerprint 去重、搜索筛选。                           |
+| `job_skills`      | `skills`、`skill_aliases`、`job_post_skills`                                                                       | 技能字典、技能别名、岗位技能关系、岗位技能筛选。                                  |
+| `ingestion`       | `ingestion_tasks`、`raw_job_records`、`ingestion_errors`                                                           | 外部岗位数据摄入、清洗、错误记录、幂等入库、失败重放。                               |
+| `job_collections` | `job_collection_folders`、`job_collections`                                                                       | 用户收藏夹、默认收藏夹、岗位收藏，必须按 `user_id` 隔离。                        |
+| `job_targets`     | `job_targets`                                                                                                    | 用户目标岗位、准备状态、优先级、主目标、收藏来源。                                 |
+| `user_skills`     | `user_skills`                                                                                                    | 用户技能画像、`mastery_score`、`proficiency_level`。               |
+| `job_match`       | 当前不建表                                                                                                            | 读取岗位技能、目标岗位和用户技能，输出 skill coverage 与目标岗位技能频率。             |
+| `study_tasks`     | `study_tasks`、`study_task_snapshots`、`study_task_progress`、`study_task_questions`、`study_task_question_attempts` | 围绕目标岗位和缺失技能生成学习任务、题目动作和进度聚合。                              |
+| `knowledge`       | `knowledge_points`                                                                                               | 公共知识点树和知识点搜索。                                             |
+| `questions`       | `questions`、`question_options`、`question_answers`、`question_skills`                                              | 公共题库、选项、答案和题目技能关系。                                        |
 
 ## 7. 本地环境
 
 ### 7.1 安装依赖
 
-```bash
+```powershell
 uv sync
 ```
 
 ### 7.2 启动基础设施
 
-```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+P1 之前 Docker 只提供基础设施：PostgreSQL、测试 PostgreSQL、Redis、RabbitMQ。API 和 Worker 暂时使用本地 `uv run` 启动，避免镜像构建和容器内调试干扰主线开发。
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --remove-orphans
 ```
 
-默认服务：
+核心服务：
 
-| 服务              | 用途                      | 地址                      |
-|-----------------|-------------------------|-------------------------|
-| PostgreSQL      | 开发数据库                   | `127.0.0.1:5432`        |
-| PostgreSQL Test | 测试数据库                   | `127.0.0.1:5433`        |
-| Redis           | 缓存、Celery broker/result | `127.0.0.1:6279`        |
-| pgAdmin         | PostgreSQL Web 管理       | `http://127.0.0.1:8180` |
-| Prometheus      | 指标采集与查询                 | `http://127.0.0.1:9090` |
-| Grafana         | 监控面板                    | `http://127.0.0.1:3000` |
+| 服务                  | 用途                             | 默认地址                     |
+|---------------------|--------------------------------|--------------------------|
+| PostgreSQL          | 开发数据库                          | `127.0.0.1:15432`        |
+| PostgreSQL Test     | 测试数据库                          | `127.0.0.1:15433`        |
+| Redis               | 缓存、Celery result backend、短期黑名单 | `127.0.0.1:16379`        |
+| RabbitMQ            | Celery broker、岗位导入队列           | `127.0.0.1:15674`        |
+| RabbitMQ Management | 队列观察与调试                        | `http://127.0.0.1:15675` |
 
-pgAdmin 默认登录账号来自 `deploy/.env`：
+### 7.3 启动 API
 
-```text
-admin@jobpilot.com / jobpilot_pgadmin
-```
-
-真实情况以 `deploy/.env` 为准。
-
-### 7.3 启动后端
-
-```bash
+```powershell
 uv run uvicorn job_pilot.main:app --reload
 ```
-
-接口文档：
 
 ```text
 http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/api/v1/health
 ```
 
-### 7.4 数据库迁移
+### 7.4 启动 Worker
 
-```bash
+```powershell
+uv run celery -A job_pilot.workers.celery_app:celery_app worker -P solo -l info
+```
+
+按队列启动：
+
+```powershell
+uv run celery -A job_pilot.workers.celery_app:celery_app worker -P solo -Q job.import,job.skill_sync -l info
+```
+
+### 7.5 数据库迁移
+
+```powershell
 uv run alembic revision --autogenerate -m "your message"
 uv run alembic upgrade head
 ```
 
-查看当前版本：
+### 7.6 测试与质量检查
 
-```bash
-alembic current
-```
-
-回滚：
-
-```bash
-alembic downgrade -1
-```
-
-### 7.5 测试
-
-linux:
-
-```bash
-APP_ENV=test uv run pytest
-```
-
-windows:
-
-```bash
-$env:APP_ENV='test'
-uv run pytest
-```
-
-测试数据库使用 `.env.test` 中的配置，避免污染开发数据库。
-
-测试目录分层：
-
-| 目录                   | 用途                                             |
-|----------------------|------------------------------------------------|
-| `tests/unit/`        | 测纯函数、service、小型资源对象，不依赖真实 HTTP 服务              |
-| `tests/api/`         | 进程内 HTTP 契约测试，覆盖认证、路径、参数解析和错误映射              |
-| `tests/integration/` | 依赖测试数据库，覆盖 repository/service 真实业务闭环、事务和用户隔离 |
-
-当前仓库暂未保留真实服务 smoke 测试目录。需要做人工冒烟时，先启动 API、PostgreSQL、Redis，再访问健康检查和 Swagger：
-
-```bash
-uv run uvicorn job_pilot.main:app --reload
-```
-
-```text
-http://127.0.0.1:8000/api/v1/health
-http://127.0.0.1:8000/api/v1/health/readiness
-http://127.0.0.1:8000/docs
-```
-
-如果外部资源不同，可以检查`/health/readiness`接口，如果其中有资源出现问题，大概率是 Windows 的开放端口出现问题了（换成其他端口即可），检查命令：
-
-```bash
-netsh interface ipv4 show excludedportrange protocol=tcp
+```powershell
+$env:APP_ENV = "test"; uv run pytest
+uv run ruff check .
+uv run pyright
 ```
 
 ## 8. 开发路线
@@ -252,51 +207,27 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 4. 涉及八股问题
 ```
 
-| 阶段 | 状态   | 目标          | 必须交付                                                                                                                                   |
-|----|------|-------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| 0  | 已完成  | 认证闭环        | `users/user_profiles/auth_identities/auth_password_credentials`、register/login/me/refresh、access/refresh token 轮换                      |
-| 1  | 已完成  | 岗位主数据       | `job_posts/job_sources/job_post_details`、raw 摄入、fingerprint 唯一约束、列表/详情/关键词/城市/薪资筛选、分页、索引、filter-options 缓存                             |
-| 2  | 基础完成 | 技能标签        | `skills/skill_aliases/job_post_skills`、别名归一、按技能筛选、岗位详情技能展示、filter-options 技能候选、同步 service 测试                                           |
-| 3  | 已完成  | 用户工作台       | 用户技能画像、岗位收藏夹、默认收藏夹切换、收藏/取消/恢复、目标岗位、目标状态、主目标唯一、收藏来源校验、用户数据隔离、工作台索引优化                                                                    |
-| 4  | 已完成  | 目标岗位技能覆盖分析  | 基于 `job_post_skills` 与 `user_skills` 做集合交集分析，输出 `matched / weak / missing`，并统计 active/paused 目标岗位高频技能；不分析 description，不引入 AI/embedding |
-| 5  | 已完成  | 学习闭环        | 基于阶段 4 输出的 `weak_skills / missing_skills` 创建学习任务，维护任务状态，支持题目作答/跳过、进度得分、任务归档和用户隔离                                                       |
-| 6  | 未开始  | Cache Aside | 岗位详情、热门技能、任务进度缓存；cache miss/hit、写后删缓存、TTL、空值缓存测试                                                                                       |
-| 7  | 未开始  | Celery 摄入   | `ingestion_tasks/raw_job_records/ingestion_errors`、异步清洗、技能提取、幂等入库、失败重试、部分失败状态                                                          |
-| 8  | 未开始  | 工程化收尾       | Docker Compose API/Worker、完整迁移、集成测试、README 总览、简历讲法、八股索引                                                                                |
+| 优先级 | 任务                | 交付标准                                                       |
+|-----|-------------------|------------------------------------------------------------|
+| P0  | UserSession 会话管理  | 表、模型、迁移、登录/刷新/退出/全部退出/会话列表、access blacklist、并发 refresh 测试。 |
+| P0  | Celery + RabbitMQ | Docker 服务、Celery app、队列配置、导入任务、重试与失败记录、Worker 启动文档。        |
+| P0  | 爬虫与后端联调           | 爬虫 pipeline 投递岗位消息，Worker 自动完成导入、去重、技能同步。                  |
+| P0  | 核心业务闭环            | 导入岗位 -> 目标岗位 -> 技能匹配 -> 学习任务生成 -> 作答 -> 用户技能评级更新。          |
+| P0  | 测试与部署             | 认证、异步导入、匹配、任务生成、用户隔离测试；Docker Compose 跑 API + Worker。      |
+| P1  | 第三方登录             | OAuth2 登录入口和账号绑定。                                          |
+| P1  | Elasticsearch     | 岗位搜索接入 ES，保留 DB 查询作为降级方案。                                  |
+| P1  | Admin             | 管理导入失败记录、岗位数据、题库和知识点。                                      |
+| P1  | 线上监控              | 指标、日志、告警、Worker 健康状态。                                      |
+| P1  | 前端页面              | 演示登录、岗位搜索、目标岗位、技能匹配、学习任务。                                  |
 
-阶段 1 先提供轻量 seed 导入，保证系统早期就有岗位数据可查。阶段 2 已完成技能字典与岗位技能关系的基础服务侧能力；阶段 3
-已完成用户工作台闭环，当前用户可维护技能画像、收藏岗位、切换默认收藏夹、设置目标岗位并维护目标状态。阶段 4
-已完成目标岗位技能覆盖分析，当前只基于 `job_post_skills` 与 `user_skills` 做集合计算，不分析
-`job_post_details.description`，不引入 AI/embedding。阶段 5 已完成学习任务闭环，当前支持手动创建任务、
-从目标岗位 missing/weak 技能缺口生成练习任务、提交作答、跳过题目、进度得分和任务状态流转。当前
-`scripts/seed_job_samples.py` 只负责岗位主数据导入，不在脚本内同步技能。后续会在独立 worker /
-编排层中完成“岗位主数据摄入成功后，开启第二个事务同步岗位技能”的生产流程。下一阶段开始接入缓存，阶段 7 再把摄入流程升级为
-Celery 异步任务和幂等处理。
-
-## 9. API 路线
-
-接口设计按业务闭环推进，优先保证用户侧核心流程可用：
-
-| 阶段 | API | 说明 |
-|----|-----|------|
-| 0  | `POST /api/v1/user/auth/register/email`、`POST /api/v1/user/auth/register/phone`、`POST /api/v1/user/auth/login/email`、`POST /api/v1/user/auth/login/phone`、`POST /api/v1/user/auth/refresh`、`POST /api/v1/user/auth/logout`、`GET /api/v1/user/me` | 完成邮箱/手机号登录态、refresh 轮换、退出和当前用户读取 |
-| 1  | `GET /api/v1/jobs/search`、`GET /api/v1/jobs/{job_post_id}`、`GET /api/v1/jobs/filter-options` | 岗位列表、详情、关键词/城市/薪资筛选 |
-| 2  | `GET /api/v1/jobs/skills`、`GET /api/v1/jobs/search?skill_ids=1`、`GET /api/v1/jobs/filter-options` | 技能字典、岗位详情技能展示、filter-options 技能候选、按技能筛选岗位 |
-| 3  | `/api/v1/user/skills`、`/api/v1/jobs/collections/folders`、`/api/v1/jobs/collections/folders/{folder_id}/default`、`/api/v1/jobs/collections`、`/api/v1/jobs/targets` | 用户技能画像、收藏夹、岗位收藏、目标岗位 |
-| 4  | `GET /api/v1/jobs/match/jobs/{job_post_id}/coverage`、`GET /api/v1/jobs/match/targets/{target_id}/coverage`、`GET /api/v1/jobs/match/targets/skills` | 单岗位技能覆盖、目标岗位技能覆盖、目标岗位技能统计；只基于结构化技能集合计算 |
-| 5  | `POST /api/v1/learning/study-tasks`、`GET /api/v1/learning/study-tasks`、`GET /api/v1/learning/study-tasks/{task_id}`、`PATCH /api/v1/learning/study-tasks/{task_id}`、`DELETE /api/v1/learning/study-tasks/{task_id}`、`POST /api/v1/learning/study-tasks/targets/{target_id}/generate`、`POST /api/v1/learning/study-tasks/{task_id}/questions/{task_question_id}/attempts`、`POST /api/v1/learning/study-tasks/{task_id}/questions/{task_question_id}/skip` | 创建学习任务、查询任务、更新/归档任务本体、从目标岗位缺口生成任务、提交作答和跳过题目；进度由作答行为派生 |
-| 6  | 无需新增业务 API | 在岗位详情、热门技能、任务进度等高频读接口接入缓存 |
-| 7  | `POST /api/v1/ingestion/tasks`、`GET /api/v1/ingestion/tasks/{task_id}`、`GET /api/v1/ingestion/tasks/{task_id}/errors` | 创建摄入任务、查询状态、查看错误记录；当前尚未暴露 HTTP 路由 |
-
-## 10. 阶段完成标准
+## 9. 阶段完成标准
 
 一个阶段完成时至少满足：
 
 - 运行时代码已按模块分层：`router / schema / service / repository / model`。
 - 新增或变更数据库结构必须有 Alembic migration。
-- 测试覆盖正常路径、关键异常路径、权限隔离或幂等场景。
+- 测试覆盖正常路径、关键异常路径、并发冲突与幂等处理场景。
 - 模块 README 记录业务边界、核心流程、关键表、测试点。
-- 八股问题能从代码实现自然引出，不只停留在概念解释。
 - 验证命令至少执行：
 
 ```bash
