@@ -9,7 +9,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
@@ -17,7 +16,6 @@ from sqlalchemy.sql import text
 from job_pilot.core.enums import enum_column
 from job_pilot.db.base import Base, TimestampMixin
 from job_pilot.modules.knowledge.enums import (
-    ContentSourceType,
     KnowledgePointLevel,
     KnowledgePointStatus,
 )
@@ -25,7 +23,6 @@ from job_pilot.modules.knowledge.enums import (
 if TYPE_CHECKING:
     from job_pilot.modules.job_skills.models import Skill
     from job_pilot.modules.questions.models import QuestionSkill
-    from job_pilot.modules.users.models import User
 
 
 class KnowledgePoint(TimestampMixin, Base):
@@ -36,14 +33,27 @@ class KnowledgePoint(TimestampMixin, Base):
 
     __tablename__ = "knowledge_points"
     __table_args__ = (
-        UniqueConstraint(
-            "skill_id", "parent_id", "title", name="uq_knowledge_points_sibling_title"
+        Index(
+            "uq_knowledge_points_root_title",
+            "skill_id",
+            "title",
+            unique=True,
+            postgresql_where=text("parent_id IS NULL"),
+        ),
+        Index(
+            "uq_knowledge_points_child_title",
+            "skill_id",
+            "parent_id",
+            "title",
+            unique=True,
+            postgresql_where=text("parent_id IS NOT NULL"),
         ),
         CheckConstraint("depth >= 0", name="ck_knowledge_points_depth_non_negative"),
         CheckConstraint("sort_order >= 0", name="ck_knowledge_points_sort_order_non_negative"),
         Index(
-            "ix_knowledge_points_skill_parent_sort",
+            "ix_knowledge_points_active_tree_order",
             "skill_id",
+            "depth",
             "parent_id",
             "sort_order",
             "id",
@@ -82,7 +92,7 @@ class KnowledgePoint(TimestampMixin, Base):
     summary: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
-        comment="知识点简短说明。MVP 不保存大段资料正文。",
+        comment="知识点简短说明。",
     )
 
     level: Mapped[KnowledgePointLevel] = mapped_column(
@@ -117,27 +127,6 @@ class KnowledgePoint(TimestampMixin, Base):
         comment="知识点状态。",
     )
 
-    source_type: Mapped[ContentSourceType] = mapped_column(
-        enum_column(ContentSourceType, name="content_source_type", length=30),
-        nullable=False,
-        default=ContentSourceType.OFFICIAL,
-        server_default=ContentSourceType.OFFICIAL.value,
-        comment="内容来源：ai、official、user_supplement。",
-    )
-
-    source_note: Mapped[str | None] = mapped_column(
-        String(300),
-        nullable=True,
-        comment="来源补充说明，不保存外部资料正文。",
-    )
-
-    created_by_user_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="用户补充内容的创建者 ID，官方或 AI 内容可为空。",
-    )
-
     skill: Mapped[Skill] = relationship(
         back_populates="knowledge_points",
     )
@@ -149,10 +138,6 @@ class KnowledgePoint(TimestampMixin, Base):
 
     children: Mapped[list[KnowledgePoint]] = relationship(
         back_populates="parent",
-    )
-
-    created_by_user: Mapped[User | None] = relationship(
-        foreign_keys=[created_by_user_id],
     )
 
     question_links: Mapped[list[QuestionSkill]] = relationship(

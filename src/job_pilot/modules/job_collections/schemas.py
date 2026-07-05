@@ -15,14 +15,14 @@ class JobCollectionFolderCreate(BaseModel):
     """创建岗位收藏夹请求。"""
 
     name: str = Field(min_length=1, max_length=80)
-    sort_order: int = Field(default=99, ge=0)
+    sort_order: int = Field(default=99, ge=0, le=10_000)
 
 
 class JobCollectionFolderUpdate(BaseModel):
     """局部更新岗位收藏夹请求。"""
 
     name: str | None = Field(default=None, min_length=1, max_length=80)
-    sort_order: int | None = Field(default=None, ge=0)
+    sort_order: int | None = Field(default=None, ge=0, le=10_000)
 
 
 class JobCollectionFolderResponse(BaseModel):
@@ -57,7 +57,6 @@ class JobCollectionUpdate(BaseModel):
 class JobCollectionListParams(PageParams):
     """岗位收藏列表查询参数。"""
 
-    include_removed: bool = False
     folder_id: int | None = Field(default=None, gt=0)
 
 

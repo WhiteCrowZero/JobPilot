@@ -71,6 +71,7 @@ class StudyTask(UserOwnedMixin, TimestampMixin, Base):
             "priority",
             "due_date",
             text("created_at DESC"),
+            text("id DESC"),
         ),
         Index("ix_study_tasks_user_skill_status", "user_id", "skill_id", "status"),
         Index(
@@ -195,7 +196,6 @@ class StudyTaskSnapshot(TimestampMixin, Base):
             "user_level_snapshot IS NULL OR user_level_snapshot BETWEEN 1 AND 5",
             name="ck_study_task_snapshots_user_level_range",
         ),
-        Index("ix_study_task_snapshots_target_job", "target_id", "job_post_id"),
         {"comment": "学习任务生成时的岗位、目标、技能缺口上下文快照。"},
     )
 
@@ -267,10 +267,7 @@ class StudyTaskProgress(TimestampMixin, Base):
             "practiced_count >= 0", name="ck_study_task_progress_practiced_non_negative"
         ),
         CheckConstraint(
-            "correct_count >= 0 "
-            "AND partial_count >= 0 "
-            "AND incorrect_count >= 0 "
-            "AND skipped_count >= 0",
+            "correct_count >= 0 AND incorrect_count >= 0 AND skipped_count >= 0",
             name="ck_study_task_progress_result_counts_non_negative",
         ),
         CheckConstraint(
@@ -281,7 +278,6 @@ class StudyTaskProgress(TimestampMixin, Base):
             "score IS NULL OR (score >= 0 AND score <= 100)",
             name="ck_study_task_progress_score_range",
         ),
-        Index("ix_study_task_progress_user_updated", "user_id", text("updated_at DESC")),
         {"comment": "学习任务整体进度聚合表。"},
     )
 
@@ -292,7 +288,6 @@ class StudyTaskProgress(TimestampMixin, Base):
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="所属用户 ID。",
     )
     study_task_id: Mapped[int] = mapped_column(
@@ -313,9 +308,6 @@ class StudyTaskProgress(TimestampMixin, Base):
     )
     correct_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0", comment="累计正确次数。"
-    )
-    partial_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0", comment="累计部分正确次数。"
     )
     incorrect_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0", comment="累计错误次数。"
@@ -438,7 +430,7 @@ class StudyTaskQuestion(TimestampMixin, Base):
 class StudyTaskQuestionAttempt(TimestampMixin, Base):
     """学习任务内某道题的一次作答记录。
 
-    该表用于保存多次作答历史，支持选择题、开放题和后续 coding 题。
+    该表用于保存多次作答历史，支持选择题、开放题题。
     """
 
     __tablename__ = "study_task_question_attempts"
@@ -472,7 +464,6 @@ class StudyTaskQuestionAttempt(TimestampMixin, Base):
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="所属用户 ID。",
     )
     study_task_id: Mapped[int] = mapped_column(
@@ -506,10 +497,7 @@ class StudyTaskQuestionAttempt(TimestampMixin, Base):
         JSONB, nullable=True, comment="选择题本次选择的 option_id 列表。"
     )
     answer_text: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="开放题、短答题或 coding 题的本次作答内容。"
-    )
-    feedback: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="本次作答反馈。MVP 可为空，后续可由 AI 生成。"
+        Text, nullable=True, comment="简答题的本次作答内容。"
     )
     duration_seconds: Mapped[int | None] = mapped_column(
         Integer, nullable=True, comment="本次作答耗时，秒。"

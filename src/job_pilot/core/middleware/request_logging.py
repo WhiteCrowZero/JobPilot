@@ -80,6 +80,8 @@ def _log_completed_request(
     status_code: int,
     duration_ms: float,
 ) -> None:
+    if status_code >= 500:
+        return
     level = _level_for_status_code(status_code)
     logger.log(
         level,
@@ -117,10 +119,6 @@ def _build_request_extra(
 
 
 def _level_for_status_code(status_code: int) -> int:
-    if status_code >= 500:
-        return logging.ERROR
-    if status_code >= 400:
-        return logging.WARNING
     return logging.INFO
 
 

@@ -5,7 +5,15 @@ from datetime import date
 from decimal import Decimal
 
 from job_pilot.core.contracts import PageQuery
-from job_pilot.modules.user_skills.enums import UserSkillSource
+from job_pilot.modules.user_skills.enums import (
+    UserSkillInterestLevel,
+    UserSkillProficiencyLevel,
+    UserSkillSource,
+    UserSkillStatus,
+)
+
+UserSkillProficiencyValue = UserSkillProficiencyLevel | int
+UserSkillInterestValue = UserSkillInterestLevel | int
 
 
 @dataclass(slots=True, frozen=True)
@@ -14,8 +22,8 @@ class UserSkillUpsertCommand:
 
     skill_id: int
     source: UserSkillSource = UserSkillSource.SELF_REPORTED
-    proficiency_level: int = 1
-    interest_level: int = 3
+    proficiency_level: UserSkillProficiencyValue = UserSkillProficiencyLevel.BEGINNER
+    interest_level: UserSkillInterestValue = UserSkillInterestLevel.MEDIUM
     years_of_experience: Decimal | None = None
     last_used_at: date | None = None
     evidence: str | None = None
@@ -28,8 +36,8 @@ class UserSkillUpdateCommand:
     """更新用户技能内部命令。"""
 
     source: UserSkillSource | None = None
-    proficiency_level: int | None = None
-    interest_level: int | None = None
+    proficiency_level: UserSkillProficiencyValue | None = None
+    interest_level: UserSkillInterestValue | None = None
     years_of_experience: Decimal | None = None
     last_used_at: date | None = None
     evidence: str | None = None
@@ -41,5 +49,5 @@ class UserSkillUpdateCommand:
 class UserSkillListQuery(PageQuery):
     """用户技能列表内部查询参数。"""
 
-    include_archived: bool = False
+    statuses: list[UserSkillStatus] | None = None
     skill_ids: list[int] | None = None

@@ -7,6 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.core.search import (
+    SearchBackend,
+    SortMap,
+    apply_sort_by_key,
+    clean_optional_int_list,
+    clean_optional_list,
+    clean_optional_text,
+    fetch_page_ids,
+    order_entities_by_ids,
+)
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import JobPostStatus
 from job_pilot.modules.job_posts.models import (
@@ -16,14 +26,44 @@ from job_pilot.modules.job_posts.models import (
 )
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 
+JOB_POST_SORTS: SortMap = {
+    "published_at_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.published_at.desc().nulls_last(), JobPost.id.desc()),
+    ),
+    "published_at_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.published_at.asc().nulls_last(), JobPost.id.asc()),
+    ),
+    "created_at_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.created_at.desc(), JobPost.id.desc()),
+    ),
+    "created_at_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.created_at.asc(), JobPost.id.asc()),
+    ),
+    "salary_max_desc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.salary_max.desc().nulls_last(), JobPost.id.desc()),
+    ),
+    "salary_min_asc": lambda: cast(
+        tuple[ColumnElement[object], ...],
+        (JobPost.salary_min.asc().nulls_last(), JobPost.id.asc()),
+    ),
+}
+
 
 class JobPostRepository:
     """岗位查询数据库操作。
 
     MVP 查询只依赖 job_posts 热字段和 detail.description 冷字段；
     地点不再 join 子表，locations 作为文本字段轻量筛选。
-    标题搜索先用 ILIKE，后续接 ES/embedding 时可替换 keyword 查询入口。
+    文本搜索统一委托 SearchBackend，repository 不直接编码 LIKE 细节。
     """
+
+    def __init__(self, search_backend: SearchBackend) -> None:
+        self.search_backend = search_backend
 
     async def search_job_posts(
         self,
@@ -31,26 +71,27 @@ class JobPostRepository:
         params: JobPostSearchQuery,
     ) -> list[JobPost]:
         base_stmt = self._build_base_search_stmt(params)
-
-        page_id_stmt = (
-            self._apply_sort(base_stmt, params).offset(params.offset).limit(params.limit + 1)
+        sorted_stmt = self._apply_sort(base_stmt, params)
+        job_post_ids = await fetch_page_ids(
+            db,
+            sorted_stmt,
+            offset=params.offset,
+            limit=params.limit,
         )
-        id_result = await db.execute(page_id_stmt)
-        job_post_ids = list(id_result.scalars().all())
         if not job_post_ids:
             return []
 
         entity_stmt = (
             select(JobPost)
             .where(JobPost.id.in_(job_post_ids))
-            .options(
-                selectinload(JobPost.source),
-                selectinload(JobPost.detail),
-            )
+            .options(selectinload(JobPost.source))
         )
         entity_result = await db.execute(entity_stmt)
-        job_posts_by_id = {job_post.id: job_post for job_post in entity_result.scalars().all()}
-        return [job_posts_by_id[job_post_id] for job_post_id in job_post_ids]
+        return order_entities_by_ids(
+            job_post_ids,
+            entity_result.scalars().all(),
+            get_id=lambda job_post: job_post.id,
+        )
 
     async def get_job_post_detail(
         self,
@@ -77,10 +118,10 @@ class JobPostRepository:
         stmt = select(JobPost.id).join(JobPost.source)
         conditions: list[ColumnElement[bool]] = [JobPost.deleted_at.is_(None)]
 
-        if params.statuses:
-            conditions.append(JobPost.status.in_(params.statuses))
-        elif not params.include_closed:
+        if params.statuses is None:
             conditions.append(JobPost.status == JobPostStatus.OPEN)
+        else:
+            conditions.append(JobPost.status.in_(params.statuses))
 
         if params.source_platforms:
             conditions.append(JobSource.platform.in_(params.source_platforms))
@@ -124,34 +165,37 @@ class JobPostRepository:
         if params.seen_to is not None:
             conditions.append(JobPost.last_seen_at <= params.seen_to)
 
-        # TODO: ES
-        keyword = _clean_optional_text(params.keyword)
+        keyword = clean_optional_text(params.keyword)
         if keyword is not None:
-            keyword_like = f"%{keyword}%"
             detail_exists = cast(
                 ColumnElement[bool],
                 exists(
                     select(literal(1)).where(
                         JobPostDetail.job_post_id == JobPost.id,
-                        JobPostDetail.description.ilike(keyword_like),
+                        self.search_backend.contains_text(JobPostDetail.description, keyword),
                     )
                 ),
             )
             keyword_condition = or_(
-                JobPost.title.ilike(keyword_like),
-                JobPost.company_name.ilike(keyword_like),
-                JobPost.locations.ilike(keyword_like),
+                self.search_backend.contains_text_in_any_field(
+                    (
+                        JobPost.title,
+                        JobPost.company_name,
+                        JobPost.locations,
+                    ),
+                    keyword,
+                ),
                 detail_exists,
             )
             conditions.append(keyword_condition)
 
-        location_keywords = _clean_optional_list(params.locations)
+        location_keywords = clean_optional_list(params.locations)
         if location_keywords:
             conditions.append(
-                or_(*(JobPost.locations.ilike(f"%{keyword}%") for keyword in location_keywords))
+                self.search_backend.contains_any_text(JobPost.locations, location_keywords)
             )
 
-        skill_ids = _clean_optional_int_list(params.skill_ids)
+        skill_ids = clean_optional_int_list(params.skill_ids)
         if skill_ids:
             matched_job_ids = (
                 select(JobPostSkill.job_post_id)
@@ -169,19 +213,12 @@ class JobPostRepository:
         params: JobPostSearchQuery,
     ) -> Select[tuple[int]]:
         # 排序字段必须白名单控制，不允许前端直接传数据库字段名。
-        match params.sort:
-            case "published_at_asc":
-                return stmt.order_by(JobPost.published_at.asc().nulls_last(), JobPost.id.asc())
-            case "created_at_desc":
-                return stmt.order_by(JobPost.created_at.desc(), JobPost.id.desc())
-            case "created_at_asc":
-                return stmt.order_by(JobPost.created_at.asc(), JobPost.id.asc())
-            case "salary_max_desc":
-                return stmt.order_by(JobPost.salary_max.desc().nulls_last(), JobPost.id.desc())
-            case "salary_min_asc":
-                return stmt.order_by(JobPost.salary_min.asc().nulls_last(), JobPost.id.asc())
-            case _:
-                return stmt.order_by(JobPost.published_at.desc().nulls_last(), JobPost.id.desc())
+        return apply_sort_by_key(
+            stmt,
+            sort_key=params.sort,
+            sort_map=JOB_POST_SORTS,
+            error_label="job post",
+        )
 
 
 class JobPostLookupRepository:
@@ -231,23 +268,3 @@ class JobPostLookupRepository:
             JobPost.deleted_at.is_(None),
             JobPost.status == JobPostStatus.OPEN,
         ]
-
-
-def _clean_optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned_value = value.strip()
-    return cleaned_value or None
-
-
-def _clean_optional_list(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-    cleaned_values = [value.strip() for value in values if value.strip()]
-    return list(dict.fromkeys(cleaned_values))
-
-
-def _clean_optional_int_list(values: list[int] | None) -> list[int]:
-    if not values:
-        return []
-    return list(dict.fromkeys(value for value in values if value > 0))

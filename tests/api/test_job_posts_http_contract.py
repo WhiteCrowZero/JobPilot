@@ -72,3 +72,20 @@ async def test_search_job_posts_rejects_invalid_salary_range(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_job_posts_rejects_invalid_published_time_range(
+    api_client: httpx.AsyncClient,
+) -> None:
+    """岗位搜索 HTTP 层拒绝反向发布时间范围。"""
+
+    response = await api_client.get(
+        JOBS_SEARCH_ENDPOINT,
+        params={
+            "published_from": "2026-06-10T00:00:00Z",
+            "published_to": "2026-06-01T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 422

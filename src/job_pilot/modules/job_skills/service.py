@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.core.exceptions import NotFoundError
 from job_pilot.core.pagination import trim_page_items
+from job_pilot.core.search import SearchBackend
+from job_pilot.modules.job_skills.contracts import (
+    RawSkillCandidate,
+    SkillAliasMatch,
+    SkillNormalizationResult,
+    SkillSyncResult,
+)
+from job_pilot.modules.job_skills.exceptions import JobPostForSkillSyncNotFoundError
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     normalize_skill_alias,
@@ -16,12 +23,6 @@ from job_pilot.modules.job_skills.schemas import (
     SkillListItem,
     SkillListParams,
     SkillListResponse,
-)
-from job_pilot.modules.job_skills.skill_sync_contracts import (
-    RawSkillCandidate,
-    SkillAliasMatch,
-    SkillNormalizationResult,
-    SkillSyncResult,
 )
 
 
@@ -114,7 +115,7 @@ class JobSkillSyncService:
         """
 
         if not await self.repository.job_post_exists(db=db, job_post_id=job_post_id):
-            raise NotFoundError("Job post not found", code="JOB_POST_NOT_FOUND")
+            raise JobPostForSkillSyncNotFoundError()
 
         # 注意此处的业务设计就是空技能时，如果之前已有技能关系，旧标签不会清掉
         if not candidates:
@@ -170,22 +171,22 @@ class JobSkillSyncService:
         )
 
 
-def build_skill_dictionary_service() -> SkillDictionaryService:
+def build_skill_dictionary_service(search_backend: SearchBackend) -> SkillDictionaryService:
     """组装技能字典 service。"""
 
-    return SkillDictionaryService(repository=SkillDictionaryRepository())
+    return SkillDictionaryService(repository=SkillDictionaryRepository(search_backend))
 
 
-def build_skill_normalization_service() -> SkillNormalizationService:
+def build_skill_normalization_service(search_backend: SearchBackend) -> SkillNormalizationService:
     """组装技能归一化 service。"""
 
-    return SkillNormalizationService(repository=SkillDictionaryRepository())
+    return SkillNormalizationService(repository=SkillDictionaryRepository(search_backend))
 
 
-def build_job_skill_sync_service() -> JobSkillSyncService:
+def build_job_skill_sync_service(search_backend: SearchBackend) -> JobSkillSyncService:
     """组装岗位技能同步 service。"""
 
     return JobSkillSyncService(
-        skill_normalization_service=build_skill_normalization_service(),
+        skill_normalization_service=build_skill_normalization_service(search_backend),
         repository=JobPostSkillRepository(),
     )

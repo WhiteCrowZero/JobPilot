@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.cache import CacheStore
+from job_pilot.core.logging import log_app_event
 from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.enums import AuthProvider
 from job_pilot.modules.auth.exceptions import (
@@ -116,7 +117,8 @@ class AuthService:
                 provider_subject=provider_subject,
             )
             if existing_identity is not None:
-                logger.warning(
+                log_app_event(
+                    logger,
                     "Registration rejected because identity already exists",
                     extra={"auth_provider": provider.value},
                 )
@@ -140,7 +142,8 @@ class AuthService:
                 password_hash=password_hash,
             )
         except IntegrityError as exc:
-            logger.warning(
+            log_app_event(
+                logger,
                 "Registration rejected by database unique constraint",
                 extra={"auth_provider": provider.value},
             )
@@ -206,13 +209,15 @@ class AuthService:
             password=password,
         )
         if identity is None:
-            logger.warning(
+            log_app_event(
+                logger,
                 "Password login failed",
                 extra={"auth_provider": provider.value},
             )
             raise InvalidCredentialsError()
         if not identity.user.is_active:
-            logger.warning(
+            log_app_event(
+                logger,
                 "Inactive user login rejected",
                 extra={"auth_provider": provider.value, "user_id": identity.user.id},
             )
@@ -240,10 +245,14 @@ class AuthService:
         token_data = await consume_refresh_token(refresh_token, cache)
         user = await self.user_service.get_user_by_id(db, user_id=token_data.user_id)
         if user is None:
-            logger.warning("Refresh token rejected because user was not found")
+            log_app_event(logger, "Refresh token rejected because user was not found")
             raise InvalidCredentialsError("Invalid refresh token")
         if not user.is_active:
-            logger.warning("Refresh token rejected for inactive user", extra={"user_id": user.id})
+            log_app_event(
+                logger,
+                "Refresh token rejected for inactive user",
+                extra={"user_id": user.id},
+            )
             raise UserInactiveError()
 
         return await self._build_token_snapshot(user=user, cache=cache)

@@ -36,18 +36,11 @@ class RawJobRecord(TimestampMixin, Base):
     __tablename__ = "raw_job_records"
     __table_args__ = (
         Index(
-            "ix_raw_job_records_source_external_job",
-            "source_id",
-            "external_job_id",
-            postgresql_where=text("external_job_id IS NOT NULL"),
+            "uq_raw_job_records_message_id",
+            "message_id",
+            unique=True,
+            postgresql_where=text("message_id IS NOT NULL"),
         ),
-        Index(
-            "ix_raw_job_records_source_url",
-            "source_id",
-            "source_url",
-            postgresql_where=text("source_url IS NOT NULL"),
-        ),
-        UniqueConstraint("message_id", name="uq_raw_job_records_message_id"),
         UniqueConstraint(
             "source_id",
             "raw_content_hash",

@@ -18,7 +18,6 @@ class StudyTaskType(StrEnum):
     SKILL_LEARNING = "skill_learning"
     QUESTION_PRACTICE = "question_practice"
     REVIEW = "review"
-    PROJECT_PRACTICE = "project_practice"
 
 
 class StudyTaskSource(StrEnum):
@@ -42,6 +41,5 @@ class StudyTaskQuestionResult(StrEnum):
     """学习任务内题目的练习结果。"""
 
     CORRECT = "correct"
-    PARTIAL = "partial"
     INCORRECT = "incorrect"
     SKIPPED = "skipped"

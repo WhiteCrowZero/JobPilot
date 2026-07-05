@@ -4,6 +4,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.core.search import fetch_offset_page
 from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_collections.enums import JobCollectionStatus
 from job_pilot.modules.job_collections.models import JobCollection
@@ -85,11 +86,13 @@ class JobTargetRepository:
                 JobTarget.targeted_at.desc(),
                 JobTarget.id.desc(),
             )
-            .offset(params.offset)
-            .limit(params.limit + 1)
         )
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return await fetch_offset_page(
+            db,
+            stmt,
+            offset=params.offset,
+            limit=params.limit,
+        )
 
     async def clear_primary_targets(
         self,

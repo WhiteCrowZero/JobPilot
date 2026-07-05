@@ -2,33 +2,60 @@
 
 ## 1. 项目原则
 
-JobPilot 是一个基于 FastAPI
-构建的后端工程项目，围绕招聘岗位数据的采集/摄入、结构化存储、搜索筛选、技能标签提取、目标岗位管理、技能差距分析、学习任务生成和八股题掌握记录，重点展示后端数据建模、缓存、异步任务、权限隔离、测试与部署能力。
+JobPilot 是一个基于 FastAPI 构建的招聘岗位情报与求职准备后端项目。项目围绕“岗位采集 → 岗位导入 → 技能匹配 →
+学习任务生成”的主线，建立：
 
-> 项目重点体现开发者的后端基本功和一定的深度，从MVP到产品级别演进。
+```text
+岗位情报 → 技能分析 → 学习准备
+```
 
-本项目采用“技术学习型 MVP”原则：MVP 不是功能最少的 CRUD
-原型，而是能体现后端工程能力的最小闭环；表结构和模块边界应贴近真实业务并保留合理扩展点，但每个阶段只实现当前主线必需的最小行为，避免一次性引入完整第三方登录、审计、设备管理、风控等复杂功能。
+业务闭环目标：
+
+```text
+Scrapy 爬虫采集岗位
+  -> Celery + RabbitMQ 投递岗位导入任务
+  -> Worker 消费任务并写入 RawJobRecord
+  -> 字段规范化、fingerprint 去重、JobPost upsert
+  -> 技能抽取与 JobPostSkill 同步
+  -> 用户设为目标岗位、维护 UserSkill
+  -> 基于 skill_id + level 计算 matched / weak / missing
+  -> 根据技能缺口生成学习任务和题目练习
+  -> 作答后更新任务进度，并按规则调整用户技能评级
+```
 
 ---
 
 ## 2. 开发规范
 
-1. 遵循 MVP 优先的迭代方式，同时所有的大规模修改都不需要考虑兼容，直接全部改掉，因为目前还是开走迭代时期。
-2. 以后每做一个模块，都要同时产出 3 个东西：
+1. 遵循 MVP 优先：先保证业务闭环正确，再做生产级增强；当前迭代期不需要为了兼容旧接口或旧表结构而保留冗余代码。
+2. 每个阶段或模块尽量同时产出：
     ```text
     1. 代码
     2. 测试
-    3. 学习文档，涉及的八股问题（在`docs/ai_report`下，中文命名）
+    3. README / 状态文档 / 学习文档
+    4. 涉及的八股问题
     ```
-3. 每个函数和类属性，都要写类型注释，一定是具体的类型，尽量不要是 `Any`。
-4. 每个.py文件的开头加上 `from __future__ import annotations`。
-5. service 的异常尽量抛到 `src/job_pilot/core/exceptions.py` 定义的异常中，不要到处乱写 HTTPException，往统一异常靠。
-6. 每个函数和类尽量写一个总注释，使用中文注释，不要太长，突出重点；特别简单的一些函数或者类（非常简短或者功能很小的）可以不加。
-7. 本地不要写 `localhost` ，统一改成 `127.0.0.1` ，避免 Windows + Docker 出现特殊问题。
-8. 读取文件时统一采取 `utf8` 的格式，避免乱码。日志输出全部采用英文，注释全部采用中文。
-9. 所有 service 调用 repository 都写成“显式注入 + factory”，参考格式
+3. 业务模块按 `model / schema / contract / enum / exception / repository / service / router` 分层组织；`router` 只做 HTTP
+   参数、鉴权依赖和调用，不写业务规则；`service` 负责业务判断、状态流转和异常；`repository` 负责 SQL 查询和持久化，不决定复杂业务语义。
+4. 用户私有数据必须在查询条件中绑定 `user_id`；子资源操作必须同时校验父资源归属，例如 `task_question_id` 必须属于当前
+   `task_id`，而 `task_id` 必须属于当前用户。
+5. 所有 service 调用 repository 都写成“显式注入 + factory”，参考格式：
    `def build_xxx_service() -> XxxService: return XxxService(repository=XxxRepository())`。
+6. 每个 `.py` 文件开头加 `from __future__ import annotations`；函数参数、返回值、类属性都写具体类型，尽量避免 `Any`。
+7. 注释和文档使用中文，日志内容使用英文；每个函数和类尽量写一个简短总注释，特别简单的函数或类可以不写。
+8. 文件读写统一使用 UTF-8；本地地址统一写 `127.0.0.1`，不要写 `localhost`。
+9. service 的异常尽量使用 `src/job_pilot/core/exceptions.py` 或模块内 `exceptions.py` 中的异常，不要在业务层到处抛
+   `HTTPException`。
+10. 状态查询要统一：需要用户主动筛选时使用 `statuses`；普通用户不该看到的 archived/deleted/draft/rejected 数据默认不可见，不要用
+    `include_archived` 这类混杂参数。
+11. Schema 只拦截明显无意义、危险或会破坏业务流程的请求；需要查数据库才能判断的业务规则放到 service/repository。
+12. 数据库索引只服务真实 `WHERE / JOIN / ORDER BY / UNIQUE / 幂等约束 / 后台摄入更新路径`，不要为低选择性字段、无调用路径字段或
+    `ILIKE '%keyword%'` 提前乱建索引。
+13. 写入模式按业务语义区分：收藏、目标岗位、用户技能等使用恢复型 upsert；raw 岗位和岗位主数据使用摄入型 upsert；普通 create
+    冲突就是业务错误。
+14. 日志不追求多，普通查询不大量打日志；关键业务事件在 service 层记录，禁止记录 password、token、完整请求体、答案正文、大
+    payload 和原始 HTML。
+15. 测试采用 AAA，测试名表达业务行为，重点覆盖用户隔离、归档默认不可见、恢复型 upsert、重复消费、学习任务幂等、作答进度、错误请求无副作用等核心不变量。
 
 ---
 
@@ -74,7 +101,7 @@ uv run pyright
 
 ## 5. 项目基本结构
 
-我隐藏了一些不重要的文件，主要结构如下：
+我隐藏了一些不重要的文件，主要结构如下；真实文件以仓库当前内容为准，README 中的本轮目标优先：
 
 ```text
 JobPilot/
@@ -84,53 +111,61 @@ JobPilot/
 |-- .env
 |-- .env.example
 |-- .env.test
-|-- .gitignore
-|-- .github
 |-- alembic.ini
 |-- alembic/
 |-- deploy/
 |   |-- .env
+|   |-- .env.example
 |   |-- Dockerfile
 |   `-- docker-compose.yml
 |-- docs/
 |-- logs/
+|-- scripts/
 |-- src/
 |   `-- job_pilot/
 |       |-- main.py
-|       |-- uow.py
 |       |-- application.py
 |       |-- api/
 |       |   |-- deps.py
 |       |   |-- health.py
 |       |   `-- v1/
-|       |       `-- router.py
+|       |       |-- jobs.py
+|       |       |-- learning.py
+|       |       |-- router.py
+|       |       `-- users.py
 |       |-- core/
 |       |   |-- config.py
 |       |   |-- enums.py
 |       |   |-- cache.py
 |       |   |-- exceptions.py
 |       |   |-- message_queue.py
-|       |   `-- resources.py
+|       |   |-- pagination.py
+|       |   |-- resources.py
+|       |   |-- uow.py
+|       |   |-- search/
+|       |   `-- middleware/
 |       |-- db/
 |       |   |-- base.py
 |       |   |-- models.py
+|       |   |-- upsert.py
 |       |   `-- session.py
 |       |-- modules/
-|       |   |-- auth/
-|       |   |-- users/
-|       |   |-- job_posts/
-|       |   |-- job_skills/
-|       |   |-- job_collections/
-|       |   |-- job_targets/
-|       |   |-- user_skills/
-|       |   |-- job_match/
-|       |   |-- study_tasks/
-|       |   |-- knowledge/
-|       |   |-- questions/
-|       |   |-- ingestion/
-|       |   `-- system/
+|       |   |-- auth/             # 注册、登录、JWT access/refresh token、UserSession、会话撤销
+|       |   |-- users/            # 用户资料、用户状态、当前用户读取
+|       |   |-- job_posts/        # 岗位主数据、搜索筛选、详情查询、fingerprint 去重
+|       |   |-- job_skills/       # 技能字典、别名归一、岗位技能关系、按技能筛选
+|       |   |-- ingestion/        # RawJobRecord、导入幂等、字段规范化、错误记录、重放入口
+|       |   |-- job_collections/  # 用户收藏岗位
+|       |   |-- job_targets/      # 用户目标岗位，表示“我要围绕这个岗位准备”
+|       |   |-- user_skills/      # 用户技能画像、mastery_score、proficiency_level
+|       |   |-- job_match/        # 岗位技能与用户技能差距分析
+|       |   |-- study_tasks/      # 学习任务，围绕目标岗位和缺失技能生成
+|       |   |-- knowledge/        # 知识点、技能分类、学习资料
+|       |   |-- questions/        # 八股题、题目掌握记录、练习记录
+|       |   `-- system/           # 健康检查、后台任务、缓存、日志等系统模块
 |       `-- workers/
-|           `-- celery_app.py
+|           |-- celery_app.py       # Celery 初始化、队列、路由、重试策略
+|           `-- tasks/              # import_raw_job、sync_job_skills、retry_failed_raw_job 等任务
 `-- tests/
     |-- conftest.py
     |-- api/
@@ -143,26 +178,28 @@ JobPilot/
 > 一切都是奔着这个目标，实现功能的同时，学会相关知识点，能够讲好整个项目。
 
 * **项目描述：** 基于 **FastAPI 模块化后端架构**
-  开发的招聘岗位情报与求职准备平台，围绕岗位数据摄入、清洗去重、技能标签提取、岗位搜索筛选、目标岗位管理、技能差距分析、学习任务生成、八股题掌握记录等场景，形成
-  **“岗位情报 → 技能分析 → 学习准备”** 的后端业务闭环。系统重点体现 **认证鉴权、数据建模、复杂查询、缓存优化、异步任务、幂等处理、测试与容器化部署
-  ** 等后端工程能力。
-* **技术栈：** **FastAPI、Pydantic v2、SQLAlchemy 2.0、Alembic、PostgreSQL、Redis、Celery、JWT、Docker Compose、pytest、uv**
+  开发的招聘岗位情报与求职准备平台，围绕岗位采集、岗位导入、结构化去重、技能标签同步、岗位搜索筛选、目标岗位管理、技能差距分析、学习任务生成和题目练习记录等场景，形成
+  **“岗位情报 → 技能分析 → 学习准备”** 的后端业务闭环。系统重点体现 **认证鉴权、会话管理、数据建模、异步任务、幂等处理、用户数据隔离、测试与
+  Docker 部署** 等后端工程能力。
+* **技术栈：** **FastAPI、Pydantic v2、SQLAlchemy 2.0、Alembic、PostgreSQL、Redis、RabbitMQ、Celery、JWT、Docker Compose、pytest、uv
+  **
 * **个人职责：**
     1. 基于 **FastAPI + SQLAlchemy 2.0** 完成后端模块化设计，将系统拆分为 **用户认证、岗位数据、数据摄入、用户工作台、学习准备、缓存与异步任务
        ** 等领域模块，采用 **router / schema / service / repository / model** 分层组织代码。
-    2. 设计 **JWT access token + refresh token** 认证体系，支持用户注册登录、token 刷新、会话撤销、用户禁用校验；通过 *
-       *FastAPI Depends** 获取当前用户，并在收藏、目标岗位、技能画像、学习任务等模块中实现 **用户数据隔离**。
+    2. 设计 **JWT access token + refresh token + UserSession** 认证体系，支持用户注册登录、token 刷新、会话撤销、全部退出、用户禁用校验和
+       access token blacklist；通过 **FastAPI Depends** 获取当前用户，并在收藏、目标岗位、技能画像、学习任务等模块中实现 *
+       *用户数据隔离**。
     3. 设计 **岗位数据模型与技能标签模型**，支持岗位列表、详情、关键词搜索、城市/薪资/技能多条件筛选；通过 **岗位
        fingerprint + 数据库唯一约束** 实现岗位去重，使用 **Alembic** 管理数据库结构演进。
-    4. 设计 **目标岗位与用户技能画像模块**，支持用户收藏岗位、设为目标岗位、维护个人技能水平；基于岗位技能与用户技能进行 *
-       *matched / missing / weak 技能差距分析**，为学习任务生成提供依据。
-    5. 设计 **学习任务与八股题掌握模块**，支持根据目标岗位缺失技能生成学习任务，按技能推荐面试题，并记录用户对题目的 *
-       *todo / reviewing / mastered** 掌握状态，形成岗位准备闭环。
-    6. 引入 **Redis Cache Aside 缓存模式**，缓存岗位详情、热门技能统计、任务进度等高频数据；在写操作后删除相关缓存，降低数据库重复查询压力，并保证
-       **数据库作为最终事实来源**。
-    7. 使用 **Celery + Redis** 处理岗位数据摄入、字段清洗、技能提取、去重入库等异步任务，避免耗时任务阻塞 HTTP 请求；结合 *
-       *任务状态表、错误记录、唯一约束和幂等设计** 处理重复执行、部分失败和失败重试等场景。
-    8. 编写 **pytest 单元测试与接口测试**，覆盖认证鉴权、权限隔离、岗位查询、收藏目标岗位、技能差距分析、学习任务生成、数据摄入去重等核心流程；使用
-       **Docker Compose** 编排 PostgreSQL、Redis、API、Worker 等服务，保证项目可运行、可迁移、可测试。
-* **技术亮点：** 使用 **Redis、Celery、唯一约束、幂等任务、Cache Aside、用户数据隔离、异步数据摄入**
+    4. 设计 **RawJobRecord 摄入模型与幂等导入流程**，通过 `message_id`、`raw_content_hash`、岗位 fingerprint
+       和唯一约束处理重复投递、重复采集、重复入库和失败重试。
+    5. 设计 **目标岗位与用户技能画像模块**，支持用户收藏岗位、设为目标岗位、维护个人技能水平；基于岗位技能与用户技能进行 *
+       *matched / weak / missing** 技能差距分析，为学习任务生成提供依据。
+    6. 设计 **学习任务与题目练习模块**，支持根据目标岗位 weak / missing
+       技能生成学习任务，按技能推荐面试题，并记录作答、跳过、任务进度和用户技能评级更新，形成岗位准备闭环。
+    7. 使用 **Celery + RabbitMQ** 处理岗位数据摄入、字段清洗、技能提取、去重入库等异步任务，避免耗时任务阻塞 HTTP
+       请求；结合任务状态、错误记录、唯一约束和幂等设计处理重复执行、部分失败和失败重试等场景。
+    8. 编写 **pytest 单元测试、接口契约测试与集成测试**，覆盖认证鉴权、权限隔离、岗位查询、收藏目标岗位、技能差距分析、学习任务生成、数据摄入去重等核心流程；使用
+       **Docker Compose** 编排 PostgreSQL、Redis、RabbitMQ、API、Worker 等服务，保证项目可运行、可迁移、可测试。
+* **技术亮点：** 使用 **UserSession、Redis、RabbitMQ、Celery、唯一约束、幂等任务、Cache Aside、用户数据隔离、异步数据摄入**
   保障系统在高频查询和批量数据处理场景下的稳定性与可扩展性。

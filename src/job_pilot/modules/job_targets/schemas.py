@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from job_pilot.core.pagination import PageParams, PageResult
+from job_pilot.core.schema_validators import validate_business_date
 from job_pilot.modules.job_targets.enums import JobTargetStatus
 
 
@@ -18,6 +19,15 @@ class JobTargetCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
     target_date: date | None = None
 
+    @field_validator("target_date")
+    @classmethod
+    def validate_target_date(
+        cls,
+        value: date | None,
+        info: ValidationInfo,
+    ) -> date | None:
+        return validate_business_date(value, field_name=info.field_name or "target_date")
+
 
 class JobTargetUpdate(BaseModel):
     """局部更新目标岗位请求。"""
@@ -28,11 +38,20 @@ class JobTargetUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
     target_date: date | None = None
 
+    @field_validator("target_date")
+    @classmethod
+    def validate_target_date(
+        cls,
+        value: date | None,
+        info: ValidationInfo,
+    ) -> date | None:
+        return validate_business_date(value, field_name=info.field_name or "target_date")
+
 
 class JobTargetListParams(PageParams):
     """目标岗位列表查询参数。"""
 
-    statuses: list[JobTargetStatus] | None = None
+    statuses: list[JobTargetStatus] | None = Field(default=None, max_length=4)
 
 
 class JobTargetResponse(BaseModel):

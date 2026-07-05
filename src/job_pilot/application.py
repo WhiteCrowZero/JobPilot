@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from job_pilot.core.resources import AppResources
+from job_pilot.core.uow import UnitOfWorkFactory, build_sqlalchemy_uow_factory
 from job_pilot.modules.auth.contracts import EmailRegisterCommand, PhoneRegisterCommand
 from job_pilot.modules.auth.service import AuthService, AuthTokenSnapshot, build_auth_service
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
@@ -37,6 +38,7 @@ from job_pilot.modules.job_posts.schemas import (
     JobPostListResponse,
 )
 from job_pilot.modules.job_posts.service import JobPostService, build_job_post_service
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate, SkillSyncResult
 from job_pilot.modules.job_skills.schemas import SkillListParams, SkillListResponse
 from job_pilot.modules.job_skills.service import (
     JobSkillSyncService,
@@ -44,7 +46,6 @@ from job_pilot.modules.job_skills.service import (
     build_job_skill_sync_service,
     build_skill_dictionary_service,
 )
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate, SkillSyncResult
 from job_pilot.modules.job_targets.contracts import (
     JobTargetCreateCommand,
     JobTargetListQuery,
@@ -55,6 +56,35 @@ from job_pilot.modules.job_targets.schemas import (
     JobTargetResponse,
 )
 from job_pilot.modules.job_targets.service import JobTargetService, build_job_target_service
+from job_pilot.modules.knowledge.contracts import KnowledgePointSearchQuery, KnowledgeTreeQuery
+from job_pilot.modules.knowledge.schemas import (
+    KnowledgePointListResponse,
+    KnowledgeTreeListResponse,
+)
+from job_pilot.modules.knowledge.service import KnowledgeService, build_knowledge_service
+from job_pilot.modules.questions.contracts import QuestionSearchQuery
+from job_pilot.modules.questions.schemas import (
+    QuestionDetailResponse,
+    QuestionListResponse,
+)
+from job_pilot.modules.questions.service import QuestionService, build_question_service
+from job_pilot.modules.study_tasks.contracts import (
+    StudyTaskCreateCommand,
+    StudyTaskGenerateFromTargetCommand,
+    StudyTaskListQuery,
+    StudyTaskQuestionAttemptCommand,
+    StudyTaskQuestionSkipCommand,
+    StudyTaskUpdateCommand,
+)
+from job_pilot.modules.study_tasks.schemas import (
+    StudyTaskAttemptResponse,
+    StudyTaskDetailResponse,
+    StudyTaskGenerationResponse,
+    StudyTaskListItem,
+    StudyTaskListResponse,
+    StudyTaskUpdateResponse,
+)
+from job_pilot.modules.study_tasks.service import StudyTaskService, build_study_task_service
 from job_pilot.modules.user_skills.contracts import (
     UserSkillListQuery,
     UserSkillUpdateCommand,
@@ -65,7 +95,6 @@ from job_pilot.modules.user_skills.schemas import (
     UserSkillResponse,
 )
 from job_pilot.modules.user_skills.service import UserSkillService, build_user_skill_service
-from job_pilot.uow import UnitOfWorkFactory, build_sqlalchemy_uow_factory
 
 
 @dataclass(slots=True)
@@ -535,6 +564,188 @@ class JobPilotIngestionApi:
 
 
 @dataclass(slots=True)
+class JobPilotLearningApi:
+    """学习准备公开入口，聚合知识点、题库和用户学习任务。"""
+
+    resources: AppResources
+    uow_factory: UnitOfWorkFactory
+    knowledge_service: KnowledgeService
+    question_service: QuestionService
+    study_task_service: StudyTaskService
+
+    async def get_knowledge_tree(self, params: KnowledgeTreeQuery) -> KnowledgeTreeListResponse:
+        """读取知识点树。"""
+
+        async with self.uow_factory() as uow:
+            return await self.knowledge_service.get_knowledge_trees(
+                uow.require_session(),
+                params=params,
+                cache=self.resources.require_cache(),
+            )
+
+    async def search_knowledge_points(
+        self, params: KnowledgePointSearchQuery
+    ) -> KnowledgePointListResponse:
+        """搜索知识点列表。"""
+
+        async with self.uow_factory() as uow:
+            return await self.knowledge_service.search_knowledge_points(
+                uow.require_session(),
+                params=params,
+            )
+
+    async def search_questions(self, params: QuestionSearchQuery) -> QuestionListResponse:
+        """搜索题目列表。"""
+
+        async with self.uow_factory() as uow:
+            return await self.question_service.search_questions(
+                uow.require_session(),
+                params=params,
+            )
+
+    async def get_question_detail(self, *, question_id: int) -> QuestionDetailResponse:
+        """读取题目详情。"""
+
+        async with self.uow_factory() as uow:
+            return await self.question_service.get_question_detail(
+                uow.require_session(),
+                question_id=question_id,
+            )
+
+    async def generate_study_tasks_from_target(
+        self,
+        *,
+        user_id: int,
+        target_id: int,
+        payload: StudyTaskGenerateFromTargetCommand,
+    ) -> StudyTaskGenerationResponse:
+        """根据目标岗位生成学习任务。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.generate_from_target(
+                uow.require_session(),
+                user_id=user_id,
+                target_id=target_id,
+                payload=payload,
+            )
+
+    async def create_study_task(
+        self,
+        *,
+        user_id: int,
+        payload: StudyTaskCreateCommand,
+    ) -> StudyTaskListItem:
+        """手动创建当前用户学习任务。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.create_task(
+                uow.require_session(),
+                user_id=user_id,
+                payload=payload,
+            )
+
+    async def list_study_tasks(
+        self,
+        *,
+        user_id: int,
+        params: StudyTaskListQuery,
+    ) -> StudyTaskListResponse:
+        """查询当前用户学习任务列表。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.list_tasks(
+                uow.require_session(),
+                user_id=user_id,
+                params=params,
+            )
+
+    async def update_study_task(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        payload: StudyTaskUpdateCommand,
+    ) -> StudyTaskUpdateResponse:
+        """更新当前用户学习任务本体。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.update_task(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+                payload=payload,
+            )
+
+    async def archive_study_task(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+    ) -> StudyTaskUpdateResponse:
+        """归档当前用户学习任务。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.archive_task(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+            )
+
+    async def get_study_task_detail(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+    ) -> StudyTaskDetailResponse:
+        """读取当前用户学习任务详情。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.get_task_detail(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+            )
+
+    async def submit_study_task_question_attempt(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        task_question_id: int,
+        payload: StudyTaskQuestionAttemptCommand,
+    ) -> StudyTaskAttemptResponse:
+        """提交当前用户学习任务题目作答。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.submit_attempt(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+                task_question_id=task_question_id,
+                payload=payload,
+            )
+
+    async def skip_study_task_question(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        task_question_id: int,
+        payload: StudyTaskQuestionSkipCommand,
+    ) -> StudyTaskAttemptResponse:
+        """跳过当前用户学习任务内题目。"""
+
+        async with self.uow_factory() as uow:
+            return await self.study_task_service.skip_task_question(
+                uow.require_session(),
+                user_id=user_id,
+                task_id=task_id,
+                task_question_id=task_question_id,
+                payload=payload,
+            )
+
+
+@dataclass(slots=True)
 class JobPilot:
     """JobPilot 作为库使用时的公开业务入口。"""
 
@@ -543,12 +754,14 @@ class JobPilot:
     skills: JobPilotSkillApi
     workbench: JobPilotWorkbenchApi
     ingestion: JobPilotIngestionApi
+    learning: JobPilotLearningApi
 
 
 def build_job_pilot(resources: AppResources) -> JobPilot:
     """按默认依赖组装 JobPilot 库公开入口。"""
 
     uow_factory = build_sqlalchemy_uow_factory(resources.require_database().session_factory)
+    search_backend = resources.require_search_backend()
 
     return JobPilot(
         auth=JobPilotAuthApi(
@@ -559,12 +772,12 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
         job_posts=JobPilotJobPostApi(
             resources=resources,
             uow_factory=uow_factory,
-            service=build_job_post_service(),
+            service=build_job_post_service(search_backend),
         ),
         skills=JobPilotSkillApi(
             uow_factory=uow_factory,
-            dictionary_service=build_skill_dictionary_service(),
-            sync_service=build_job_skill_sync_service(),
+            dictionary_service=build_skill_dictionary_service(search_backend),
+            sync_service=build_job_skill_sync_service(search_backend),
         ),
         workbench=JobPilotWorkbenchApi(
             uow_factory=uow_factory,
@@ -574,4 +787,11 @@ def build_job_pilot(resources: AppResources) -> JobPilot:
             match_service=build_job_match_service(),
         ),
         ingestion=JobPilotIngestionApi(uow_factory=uow_factory),
+        learning=JobPilotLearningApi(
+            resources=resources,
+            uow_factory=uow_factory,
+            knowledge_service=build_knowledge_service(search_backend),
+            question_service=build_question_service(search_backend),
+            study_task_service=build_study_task_service(),
+        ),
     )

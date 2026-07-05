@@ -5,7 +5,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from job_pilot.core.exceptions import ValidationError
+from job_pilot.modules.ingestion.exceptions import JobDraftFieldRequiredError
 
 _MULTI_SPACE_PATTERN = re.compile(r"[ \t\f\v]+")
 _BLANK_LIKE_VALUES = {"", "none", "null", "nan", "n/a", "na", "-", "--", "无", "不限", "暂无"}
@@ -31,9 +31,7 @@ def clean_text(value: object | None) -> str | None:
 def clean_required_text(value: object | None, *, field_name: str) -> str:
     cleaned_value = clean_text(value)
     if cleaned_value is None:
-        raise ValidationError(
-            f"Job draft {field_name} is required", code="JOB_DRAFT_FIELD_REQUIRED"
-        )
+        raise JobDraftFieldRequiredError(field_name=field_name)
     return cleaned_value
 
 

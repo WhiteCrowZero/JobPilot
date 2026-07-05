@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.exceptions import AppError, BadRequestError
+from job_pilot.core.logging import log_app_event
 from job_pilot.modules.ingestion.adapters import BaseJobAdapter, get_job_adapter
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.normalization import normalize_job_draft
@@ -13,11 +14,11 @@ from job_pilot.modules.ingestion.repository import (
     RawJobIngestionRepository,
     RawRecordIngestionAction,
 )
+from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
     extract_raw_skill_candidates,
 )
-from job_pilot.modules.job_skills.skill_sync_contracts import RawSkillCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,8 @@ class RawJobIngestionService:
                 db=session,
                 raw_record_id=raw_record.id,
             )
-            logger.info(
+            log_app_event(
+                logger,
                 "Raw job message skipped by ingestion idempotency",
                 extra={
                     "source_platform": message.source_platform,
@@ -137,7 +139,8 @@ class RawJobIngestionService:
                 raw_record=raw_record,
                 error_message=exc.message,
             )
-            logger.warning(
+            log_app_event(
+                logger,
                 "Raw job message failed business validation",
                 extra={
                     "source_platform": message.source_platform,

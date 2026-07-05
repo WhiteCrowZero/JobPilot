@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import MISSING
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.logging import log_app_event
 from job_pilot.core.pagination import trim_page_items
 from job_pilot.modules.job_collections.models import JobCollection
 from job_pilot.modules.job_targets.contracts import (
@@ -25,6 +27,8 @@ from job_pilot.modules.job_targets.schemas import (
     JobTargetListResponse,
     JobTargetResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class JobTargetService:
@@ -70,6 +74,18 @@ class JobTargetService:
             update_values=update_values,
         )
 
+        log_app_event(
+            logger,
+            "Job target upserted",
+            extra={
+                "event": "job_targets.upserted",
+                "user_id": user_id,
+                "target_id": target.id,
+                "job_post_id": target.job_post_id,
+                "status": target.status.value,
+                "is_primary": target.is_primary,
+            },
+        )
         return self._to_response(target)
 
     async def list_targets(
@@ -126,6 +142,19 @@ class JobTargetService:
 
         if values:
             target = await self.repository.update_target(db, target=target, values=values)
+            log_app_event(
+                logger,
+                "Job target updated",
+                extra={
+                    "event": "job_targets.updated",
+                    "user_id": user_id,
+                    "target_id": target.id,
+                    "job_post_id": target.job_post_id,
+                    "status": target.status.value,
+                    "updated_fields": sorted(values.keys()),
+                    "is_primary": target.is_primary,
+                },
+            )
 
         return self._to_response(target)
 

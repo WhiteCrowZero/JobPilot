@@ -5,13 +5,17 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.core.exceptions import BadRequestError
+from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.models import JobPost
+from job_pilot.modules.job_skills.contracts import SkillAliasMatch
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill, SkillAlias
-from job_pilot.modules.job_skills.skill_sync_contracts import SkillAliasMatch
 
 
 class SkillDictionaryRepository:
     """技能字典和别名表数据库操作。"""
+
+    def __init__(self, search_backend: SearchBackend) -> None:
+        self.search_backend = search_backend
 
     async def upsert_skill(
         self,
@@ -103,7 +107,7 @@ class SkillDictionaryRepository:
         conditions: list[ColumnElement[bool]] = []
         cleaned_keyword = keyword.strip() if keyword is not None else None
         if cleaned_keyword:
-            conditions.append(Skill.name.ilike(f"%{cleaned_keyword}%"))
+            conditions.append(self.search_backend.contains_text(Skill.name, cleaned_keyword))
         return conditions
 
 

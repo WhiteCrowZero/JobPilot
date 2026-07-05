@@ -21,6 +21,5 @@ class KnowledgePointLevel(StrEnum):
 class ContentSourceType(StrEnum):
     """公共内容来源类型。"""
 
-    AI = "ai"
     OFFICIAL = "official"
     USER_SUPPLEMENT = "user_supplement"

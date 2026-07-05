@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_pilot.core.search import SqlLikeSearchBackend
 from job_pilot.modules.job_collections.models import JobCollection, JobCollectionFolder
 from job_pilot.modules.job_posts.models import JobPost, JobSource
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
@@ -31,7 +32,7 @@ async def create_test_user(
 async def seed_test_skill(session: AsyncSession, name: str) -> Skill:
     """创建或更新一个标准技能。"""
 
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
     skill, _ = await repository.upsert_skill(db=session, name=name)
     await session.commit()
     return skill
@@ -41,7 +42,7 @@ async def seed_test_skills(session: AsyncSession, names: Iterable[str]) -> list[
     """批量创建标准技能。"""
 
     skills: list[Skill] = []
-    repository = SkillDictionaryRepository()
+    repository = SkillDictionaryRepository(SqlLikeSearchBackend())
     for name in names:
         skill, _ = await repository.upsert_skill(db=session, name=name)
         skills.append(skill)

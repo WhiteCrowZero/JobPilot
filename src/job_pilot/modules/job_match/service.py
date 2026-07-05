@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.core.exceptions import ValidationError
 from job_pilot.modules.job_match.contracts import (
     JobSkillCoverageResult,
     SkillCoverageBuckets,
@@ -12,6 +11,7 @@ from job_pilot.modules.job_match.contracts import (
 )
 from job_pilot.modules.job_match.enums import JobMatchAnalysisStatus, JobMatchSkillStatus
 from job_pilot.modules.job_match.exceptions import (
+    JobMatchInvalidParameterError,
     JobPostForMatchNotFoundError,
     JobTargetForMatchNotFoundError,
 )
@@ -298,12 +298,12 @@ class JobMatchService:
     @staticmethod
     def _validate_required_level(required_level: int) -> None:
         if required_level < 1 or required_level > 5:
-            raise ValidationError("required_level must be between 1 and 5")
+            raise JobMatchInvalidParameterError("required_level must be between 1 and 5")
 
     @staticmethod
     def _validate_limit(limit: int) -> None:
         if limit < 1 or limit > MAX_SUMMARY_LIMIT:
-            raise ValidationError("limit must be between 1 and 100")
+            raise JobMatchInvalidParameterError("limit must be between 1 and 100")
 
 
 def classify_skill_coverage(

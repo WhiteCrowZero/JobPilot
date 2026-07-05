@@ -4,6 +4,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from job_pilot.core.search import fetch_offset_page
 from job_pilot.db.upsert import upsert_restoring_record
 from job_pilot.modules.job_skills.models import Skill
 from job_pilot.modules.user_skills.contracts import UserSkillListQuery
@@ -47,7 +48,9 @@ class UserSkillRepository:
         conditions: list[ColumnElement[bool]] = [UserSkill.user_id == user_id]
         if params.skill_ids:
             conditions.append(UserSkill.skill_id.in_(params.skill_ids))
-        if not params.include_archived:
+        if params.statuses:
+            conditions.append(UserSkill.status.in_(params.statuses))
+        else:
             conditions.append(UserSkill.status == UserSkillStatus.ACTIVE)
 
         stmt = (
@@ -58,9 +61,12 @@ class UserSkillRepository:
                 UserSkill.updated_at.desc(),
             )
         )
-        stmt = stmt.offset(params.offset).limit(params.limit + 1)
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return await fetch_offset_page(
+            db,
+            stmt,
+            offset=params.offset,
+            limit=params.limit,
+        )
 
     async def upsert_active_skill(
         self,

@@ -24,6 +24,7 @@ JOB_COLLECTIONS_ENDPOINT = api_path("/jobs/collections")
 JOB_COLLECTION_FOLDERS_ENDPOINT = api_path("/jobs/collections/folders")
 JOB_TARGETS_ENDPOINT = api_path("/jobs/targets")
 USER_SKILLS_ENDPOINT = api_path("/user/skills")
+STUDY_TASKS_ENDPOINT = api_path("/learning/study-tasks")
 
 
 def job_detail_endpoint(job_post_id: int) -> str:
@@ -60,3 +61,23 @@ def job_match_target_coverage_endpoint(target_id: int) -> str:
 
 def job_match_target_skills_endpoint() -> str:
     return api_path("/jobs/match/targets/skills")
+
+
+def study_task_endpoint(task_id: int) -> str:
+    return api_path(f"/learning/study-tasks/{task_id}")
+
+
+def study_task_generate_from_target_endpoint(target_id: int) -> str:
+    return api_path(f"/learning/study-tasks/targets/{target_id}/generate")
+
+
+def study_task_question_endpoint(task_id: int, task_question_id: int) -> str:
+    return api_path(f"/learning/study-tasks/{task_id}/questions/{task_question_id}")
+
+
+def study_task_question_attempts_endpoint(task_id: int, task_question_id: int) -> str:
+    return api_path(f"/learning/study-tasks/{task_id}/questions/{task_question_id}/attempts")
+
+
+def study_task_question_skip_endpoint(task_id: int, task_question_id: int) -> str:
+    return api_path(f"/learning/study-tasks/{task_id}/questions/{task_question_id}/skip")

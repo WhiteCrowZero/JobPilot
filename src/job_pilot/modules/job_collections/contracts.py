@@ -45,5 +45,4 @@ class JobCollectionUpdateCommand:
 class JobCollectionListQuery(PageQuery):
     """岗位收藏列表内部查询参数。"""
 
-    include_removed: bool = False
     folder_id: int | None = None

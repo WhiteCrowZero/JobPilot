@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from job_pilot.core.exceptions import NotFoundError
+from job_pilot.core.exceptions import NotFoundError, ValidationError
 
 
 class JobPostForMatchNotFoundError(NotFoundError):
@@ -20,4 +20,14 @@ class JobTargetForMatchNotFoundError(NotFoundError):
         super().__init__(
             message="Job target not found for skill coverage analysis",
             code="JOB_TARGET_FOR_MATCH_NOT_FOUND",
+        )
+
+
+class JobMatchInvalidParameterError(ValidationError):
+    """技能覆盖分析参数不合法。"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            code="JOB_MATCH_INVALID_PARAMETER",
         )

@@ -2,18 +2,17 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Path, Query
 
 from job_pilot.api.deps import CurrentActiveUserDep, JobPilotDep
-from job_pilot.core.pagination import PageParams
 from job_pilot.modules.job_targets.contracts import (
     JobTargetCreateCommand,
     JobTargetListQuery,
     JobTargetUpdateCommand,
 )
-from job_pilot.modules.job_targets.enums import JobTargetStatus
 from job_pilot.modules.job_targets.schemas import (
     JobTargetCreate,
+    JobTargetListParams,
     JobTargetListResponse,
     JobTargetResponse,
     JobTargetUpdate,
@@ -48,25 +47,24 @@ async def create_target(
 async def list_targets(
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
-    pagination: Annotated[PageParams, Depends()],
-    statuses: Annotated[list[JobTargetStatus] | None, Query()] = None,
+    params: Annotated[JobTargetListParams, Query()],
 ) -> JobTargetListResponse:
     """查询当前用户目标岗位。"""
 
-    params = JobTargetListQuery(
-        statuses=statuses,
-        page=pagination.page,
-        page_size=pagination.page_size,
+    query = JobTargetListQuery(
+        statuses=params.statuses,
+        page=params.page,
+        page_size=params.page_size,
     )
     return await pilot.workbench.list_targets(
         user_id=current_user.id,
-        params=params,
+        params=query,
     )
 
 
 @router.patch("/{target_id}", response_model=JobTargetResponse)
 async def update_target(
-    target_id: int,
+    target_id: Annotated[int, Path(gt=0)],
     payload: JobTargetUpdate,
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
@@ -89,7 +87,7 @@ async def update_target(
 
 @router.delete("/{target_id}", response_model=JobTargetResponse)
 async def archive_target(
-    target_id: int,
+    target_id: Annotated[int, Path(gt=0)],
     current_user: CurrentActiveUserDep,
     pilot: JobPilotDep,
 ) -> JobTargetResponse:
