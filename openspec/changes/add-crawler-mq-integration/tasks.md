@@ -6,19 +6,19 @@
 
 ## 2. RabbitMQ 与 Celery 基础设施
 
-- [ ] 2.1 更新配置、示例环境和 Compose，使 RabbitMQ 成为 Celery broker，Redis 保持缓存和 Celery result backend，并使用 `127.0.0.1` 本地示例。
-- [ ] 2.2 在 Celery app 显式声明 `default` 与 `job.ingestion` 队列，并将 `job.import_raw` 路由至 `job.ingestion`；为将来的 `job.skill_sync` / `job.ingestion.dlq` 保留命名说明但不注册消费任务。
-- [ ] 2.3 全仓检索 `MessageQueue` / `DomainEvent` 引用；确认无其他调用或完成必要迁移后，删除 Redis List 队列实现及其无效测试/配置。
-- [ ] 2.4 为 broker、任务路由和序列化配置补充单元测试，验证岗位任务不会落入默认队列。
+- [x] 2.1 更新配置、示例环境和 Compose，使 RabbitMQ 成为 Celery broker，Redis 保持缓存和 Celery result backend，并使用 `127.0.0.1` 本地示例。
+- [x] 2.2 在 Celery app 显式声明 `default` 与 `job.ingestion` 队列，并将 `job.import_raw` 路由至 `job.ingestion`；为将来的 `job.skill_sync` / `job.ingestion.dlq` 保留命名说明但不注册消费任务。
+- [x] 2.3 全仓检索 `MessageQueue` / `DomainEvent` 引用；确认无其他调用或完成必要迁移后，删除 Redis List 队列实现及其无效测试/配置。
+- [x] 2.4 为 broker、任务路由和序列化配置补充单元测试，验证岗位任务不会落入默认队列。
 
 ## 3. 可恢复的岗位导入 Worker
 
-- [ ] 3.1 新增并注册 `job.import_raw` task：先校验消息和来源，再用独立会话提交 raw/job/detail 的事务一。
-- [ ] 3.2 调整摄入服务/仓储返回值和查询方法，使任一摄入结果均能提供持久化 `raw_record_id` 与关联 `job_post_id`，包括重复 message 和重复 raw 路径。
-- [ ] 3.3 新增从 `raw_record_id` 重新读取 raw payload、选择 adapter 并重建 `RawSkillCandidate` 的服务入口；事务二调用 `JobSkillSyncService` 并独立提交。
-- [ ] 3.4 设计并实现最小持久化状态/错误记录变更，能诊断事务二待恢复或最终失败；如涉及模型字段，创建 Alembic migration 并先迁移测试库。
-- [ ] 3.5 把数据库连接、超时和死锁等映射为有限次数、指数退避和 jitter 的 Celery 重试白名单；契约、永久业务、重复投递和未匹配技能不重试。
-- [ ] 3.6 为 task 编排补充单元/集成测试：首次成功、相同 message、不同 message 的相同 raw、fingerprint upsert、事务二失败后的重试重建、最终失败诊断和未匹配技能完成路径。
+- [x] 3.1 新增并注册 `job.import_raw` task：先校验消息和来源，再用独立会话提交 raw/job/detail 的事务一。
+- [x] 3.2 调整摄入服务/仓储返回值和查询方法，使任一摄入结果均能提供持久化 `raw_record_id` 与关联 `job_post_id`，包括重复 message 和重复 raw 路径。
+- [x] 3.3 新增从 `raw_record_id` 重新读取 raw payload、选择 adapter 并重建 `RawSkillCandidate` 的服务入口；事务二调用 `JobSkillSyncService` 并独立提交。
+- [x] 3.4 设计并实现最小持久化状态/错误记录变更，能诊断事务二待恢复或最终失败；如涉及模型字段，创建 Alembic migration 并先迁移测试库。
+- [x] 3.5 把数据库连接、超时和死锁等映射为有限次数、指数退避和 jitter 的 Celery 重试白名单；契约、永久业务、重复投递和未匹配技能不重试。
+- [x] 3.6 为 task 编排补充单元/集成测试：首次成功、相同 message、不同 message 的相同 raw、fingerprint upsert、事务二失败后的重试重建、最终失败诊断和未匹配技能完成路径。
 
 ## 4. 独立 simulator 与联调资料
 

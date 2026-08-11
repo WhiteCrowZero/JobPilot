@@ -19,7 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from job_pilot.core.enums import enum_column
 from job_pilot.db.base import Base, TimestampMixin
-from job_pilot.modules.ingestion.enums import RawJobRecordStatus
+from job_pilot.modules.ingestion.enums import RawJobRecordStatus, RawJobSkillSyncStatus
 
 if TYPE_CHECKING:
     from job_pilot.modules.job_posts.models import JobPost, JobSource
@@ -125,6 +125,26 @@ class RawJobRecord(TimestampMixin, Base):
         Text,
         nullable=True,
         comment="adapter/normalizer 失败时记录错误原因。",
+    )
+
+    skill_sync_status: Mapped[RawJobSkillSyncStatus] = mapped_column(
+        enum_column(RawJobSkillSyncStatus, name="raw_job_skill_sync_status", length=30),
+        nullable=False,
+        default=RawJobSkillSyncStatus.NOT_STARTED,
+        server_default=RawJobSkillSyncStatus.NOT_STARTED.value,
+        comment="岗位技能同步状态，与 raw 规范化状态分开记录。",
+    )
+
+    skill_sync_error_message: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="最近一次失败原因。",
+    )
+
+    skill_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="技能同步成功或确认跳过时间。",
     )
 
     fetched_at: Mapped[datetime | None] = mapped_column(

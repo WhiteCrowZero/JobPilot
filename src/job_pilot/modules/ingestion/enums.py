@@ -10,3 +10,13 @@ class RawJobRecordStatus(StrEnum):
     NORMALIZED = "normalized"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class RawJobSkillSyncStatus(StrEnum):
+    """原始岗位对应技能同步状态。"""
+
+    NOT_STARTED = "not_started"
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    SKIPPED = "skipped"
+    FAILED = "failed"

@@ -17,7 +17,6 @@ async def test_build_app_resources_creates_application_resources() -> None:
         assert resources.require_database().session_factory is not None
         assert resources.cache is not None
         assert resources.lock is not None
-        assert resources.message_queue is not None
     finally:
         await resources.close()
 
@@ -31,7 +30,6 @@ async def test_build_database_only_resources_keeps_optional_resources_empty() ->
         assert resources.redis_client is None
         assert resources.cache is None
         assert resources.lock is None
-        assert resources.message_queue is None
 
         with pytest.raises(ResourceUnavailableError):
             resources.require_cache()

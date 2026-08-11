@@ -11,9 +11,9 @@ from sqlalchemy import case, func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_pilot.core.exceptions import ResourceUnavailableError
+from job_pilot.core.exceptions import NotFoundError, ResourceUnavailableError
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
-from job_pilot.modules.ingestion.enums import RawJobRecordStatus
+from job_pilot.modules.ingestion.enums import RawJobRecordStatus, RawJobSkillSyncStatus
 from job_pilot.modules.ingestion.models import RawJobRecord
 from job_pilot.modules.ingestion.normalization import NormalizedJob
 from job_pilot.modules.job_posts.enums import (
@@ -53,6 +53,14 @@ class RawRecordWriteResult:
 
     raw_record: RawJobRecord
     action: RawRecordIngestionAction
+
+
+@dataclass(slots=True, frozen=True)
+class RawSkillRebuildInput:
+    """从数据库重建岗位技能候选所需的持久化输入。"""
+
+    source_platform: str
+    raw_payload: dict[str, object]
 
 
 class RawJobIngestionRepository:
@@ -150,6 +158,9 @@ class RawJobIngestionRepository:
             raw_payload=message.raw_payload,
             status=RawJobRecordStatus.RECEIVED,
             error_message=None,
+            skill_sync_status=RawJobSkillSyncStatus.NOT_STARTED,
+            skill_sync_error_message=None,
+            skill_synced_at=None,
             fetched_at=message.fetched_at,
             received_at=now,
             processed_at=None,
@@ -275,6 +286,77 @@ class RawJobIngestionRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def get_raw_skill_rebuild_input(
+        self,
+        *,
+        db: AsyncSession,
+        raw_record_id: int,
+    ) -> RawSkillRebuildInput:
+        """读取 raw payload 与来源平台，供事务二重新提取技能。"""
+
+        result = await db.execute(
+            select(JobSource.platform, RawJobRecord.raw_payload)
+            .join(RawJobRecord, RawJobRecord.source_id == JobSource.id)
+            .where(RawJobRecord.id == raw_record_id)
+        )
+        row = result.one_or_none()
+        if row is None:
+            raise NotFoundError(
+                "Raw job record not found for skill synchronization",
+                code="RAW_JOB_RECORD_NOT_FOUND",
+            )
+        source_platform, raw_payload = row
+        return RawSkillRebuildInput(
+            source_platform=source_platform,
+            raw_payload=raw_payload,
+        )
+
+    async def mark_skill_sync_succeeded(
+        self,
+        *,
+        db: AsyncSession,
+        raw_record_id: int,
+        skipped: bool,
+    ) -> None:
+        """记录技能同步已完成或因无候选而正常跳过。"""
+
+        raw_record = await self._require_raw_record(db=db, raw_record_id=raw_record_id)
+        raw_record.skill_sync_status = (
+            RawJobSkillSyncStatus.SKIPPED if skipped else RawJobSkillSyncStatus.SUCCEEDED
+        )
+        raw_record.skill_sync_error_message = None
+        raw_record.skill_synced_at = datetime.now(UTC)
+        await db.flush()
+
+    async def mark_skill_sync_failed(
+        self,
+        *,
+        db: AsyncSession,
+        raw_record_id: int,
+        error_message: str,
+    ) -> None:
+        """记录技能同步最近一次失败，供重试与人工诊断。"""
+
+        raw_record = await self._require_raw_record(db=db, raw_record_id=raw_record_id)
+        raw_record.skill_sync_status = RawJobSkillSyncStatus.FAILED
+        raw_record.skill_sync_error_message = error_message[:2000]
+        raw_record.skill_synced_at = None
+        await db.flush()
+
+    async def _require_raw_record(
+        self,
+        *,
+        db: AsyncSession,
+        raw_record_id: int,
+    ) -> RawJobRecord:
+        raw_record = await db.get(RawJobRecord, raw_record_id)
+        if raw_record is None:
+            raise NotFoundError(
+                "Raw job record not found",
+                code="RAW_JOB_RECORD_NOT_FOUND",
+            )
+        return raw_record
 
     async def upsert_job_post(
         self,
@@ -480,6 +562,9 @@ class RawJobIngestionRepository:
         raw_record.status = RawJobRecordStatus.NORMALIZED
         raw_record.error_message = None
         raw_record.skill_content_hash = skill_content_hash
+        raw_record.skill_sync_status = RawJobSkillSyncStatus.PENDING
+        raw_record.skill_sync_error_message = None
+        raw_record.skill_synced_at = None
         raw_record.processed_at = now
         raw_record.last_seen_at = now
         await db.flush()
