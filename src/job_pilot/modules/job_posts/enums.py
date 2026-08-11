@@ -10,6 +10,7 @@ class KnownJobSourcePlatform(StrEnum):
     TENCENT = "tencent"
     JAABZ = "jaabz"
     SAMPLE = "sample"
+    MOCK = "mock"
 
 
 class JobPostStatus(StrEnum):

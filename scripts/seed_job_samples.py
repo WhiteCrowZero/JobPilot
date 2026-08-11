@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -121,12 +121,15 @@ def build_raw_job_message(
     )
 
     return RawJobCollectedMessage(
+        schema_version=1,
+        event_type="job.raw.collected",
         message_id=build_message_id(
             source_platform=source_platform,
             external_job_id=external_job_id,
             raw_hash=raw_hash,
         ),
-        trace_id=f"MQ-{config.producer}",
+        trace_id=build_trace_id(source_platform=source_platform, producer=config.producer),
+        produced_at=datetime.now(UTC),
         source_platform=source_platform,
         external_job_id=external_job_id,
         source_url=source_url,
@@ -142,11 +145,17 @@ def build_message_id(
     external_job_id: str | None,
     raw_hash: str,
 ) -> str:
-    """生成不超过消息契约长度限制的稳定 message_id。"""
+    """按业务事件身份生成稳定 UUID message_id。"""
 
     message_identity = f"{source_platform}:{external_job_id or ''}:{raw_hash}"
-    message_hash = build_raw_payload_hash({"message_identity": message_identity})
-    return f"{source_platform[:12]}:{message_hash[:40]}"
+    return str(uuid5(NAMESPACE_URL, f"https://jobpilot.local/events/{message_identity}"))
+
+
+def build_trace_id(*, source_platform: str, producer: str) -> str:
+    """为一次来源导入批次生成可跨重试复用的追踪 UUID。"""
+
+    trace_identity = f"{source_platform}:{producer}"
+    return str(uuid5(NAMESPACE_URL, f"https://jobpilot.local/traces/{trace_identity}"))
 
 
 async def import_source(

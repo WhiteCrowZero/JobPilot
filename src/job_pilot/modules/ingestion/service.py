@@ -14,6 +14,7 @@ from job_pilot.modules.ingestion.repository import (
     RawJobIngestionRepository,
     RawRecordIngestionAction,
 )
+from job_pilot.modules.ingestion.sources import JobSourceConfig
 from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
@@ -35,15 +36,6 @@ class RawJobIngestionResult:
     action: RawRecordIngestionAction
     raw_skill_candidates: list[RawSkillCandidate]
     skill_content_hash: str | None
-
-
-@dataclass(slots=True, frozen=True)
-class JobSourceConfig:
-    """一次摄入任务绑定的明确来源实例。"""
-
-    platform: str
-    name: str
-    base_url: str
 
 
 class RawJobIngestionService:

@@ -18,6 +18,7 @@ from job_pilot.modules.job_posts.enums import EducationLevel, ExperienceLevel, S
 from job_pilot.modules.job_posts.models import JobPost, JobPostDetail, JobSource
 from job_pilot.modules.job_skills.models import JobPostSkill
 from tests.helpers.database import truncate_job_tables
+from tests.helpers.messages import build_test_raw_job_message, stable_test_uuid
 
 
 @pytest.mark.asyncio
@@ -31,7 +32,7 @@ async def test_consume_raw_job_message_normalizes_job_tables(
 
     try:
         source_config = _alibaba_source_config()
-        message = RawJobCollectedMessage(
+        message = build_test_raw_job_message(
             message_id="alibaba:sample-001",
             source_platform="alibaba",
             external_job_id="ali-001",
@@ -90,7 +91,7 @@ async def test_consume_raw_job_message_normalizes_job_tables(
 
         updated_message = message.model_copy(
             update={
-                "message_id": "alibaba:sample-002",
+                "message_id": stable_test_uuid("alibaba:sample-002"),
                 "raw_payload": {
                     **message.raw_payload,
                     "salary": "30-40K",
@@ -192,8 +193,8 @@ async def test_consume_raw_job_message_skips_duplicate_raw_content_hash(
             source_config=_alibaba_source_config(),
             message=message.model_copy(
                 update={
-                    "message_id": "alibaba-idempotent:raw-002",
-                    "trace_id": "trace-raw-002",
+                    "message_id": stable_test_uuid("alibaba-idempotent:raw-002"),
+                    "trace_id": stable_test_uuid("trace-raw-002"),
                 }
             ),
         )
@@ -209,7 +210,7 @@ async def test_consume_raw_job_message_skips_duplicate_raw_content_hash(
         assert raw_record_count == 1
         assert job_post_count == 1
         assert raw_record.seen_count == 2
-        assert raw_record.trace_id == "trace-raw-002"
+        assert raw_record.trace_id == stable_test_uuid("trace-raw-002")
         assert raw_record.status == RawJobRecordStatus.NORMALIZED
         assert job_post.salary_text == "25-35K"
     finally:
@@ -259,7 +260,7 @@ async def test_failed_raw_record_can_retry_with_same_raw_payload(
             name="Retry Jobs",
             base_url="https://jobs.example.com/retry",
         )
-        message = RawJobCollectedMessage(
+        message = build_test_raw_job_message(
             message_id="retry-test:001",
             source_platform=RetryableAdapter.source_platform,
             external_job_id="retry-001",
@@ -280,7 +281,9 @@ async def test_failed_raw_record_can_retry_with_same_raw_payload(
         RetryableAdapter.should_fail = False
         retry_result = await pilot.ingestion.consume_raw_job(
             source_config=source_config,
-            message=message.model_copy(update={"message_id": "retry-test:002"}),
+            message=message.model_copy(
+                update={"message_id": stable_test_uuid("retry-test:002")}
+            ),
         )
 
         db_session.expire_all()
@@ -328,7 +331,7 @@ async def test_consume_raw_job_message_updates_same_fingerprint_with_new_raw_ver
             source_config=_alibaba_source_config(),
             message=message.model_copy(
                 update={
-                    "message_id": "alibaba-idempotent:fingerprint-002",
+                    "message_id": stable_test_uuid("alibaba-idempotent:fingerprint-002"),
                     "raw_payload": {
                         **message.raw_payload,
                         "salary": "30-40K",
@@ -531,7 +534,7 @@ def _build_alibaba_message(
 ) -> RawJobCollectedMessage:
     """构造阿里岗位消息，避免来源身份测试里重复无关字段。"""
 
-    return RawJobCollectedMessage(
+    return build_test_raw_job_message(
         message_id=message_id,
         source_platform="alibaba",
         external_job_id=external_job_id,
