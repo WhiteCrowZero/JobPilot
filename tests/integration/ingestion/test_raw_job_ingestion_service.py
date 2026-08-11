@@ -281,9 +281,7 @@ async def test_failed_raw_record_can_retry_with_same_raw_payload(
         RetryableAdapter.should_fail = False
         retry_result = await pilot.ingestion.consume_raw_job(
             source_config=source_config,
-            message=message.model_copy(
-                update={"message_id": stable_test_uuid("retry-test:002")}
-            ),
+            message=message.model_copy(update={"message_id": stable_test_uuid("retry-test:002")}),
         )
 
         db_session.expire_all()

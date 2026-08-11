@@ -64,13 +64,22 @@ def import_raw_job(self: Task, message_data: dict[str, object]) -> dict[str, obj
             )
         )
     except Exception as exc:
+        correlation = build_log_correlation(
+            message_data=message_data,
+            task_id=str(self.request.id or "unknown"),
+            raw_record_id=getattr(exc, "raw_record_id", None),
+        )
         if not is_retryable_ingestion_error(exc):
+            logger.warning(
+                "Raw job import failed without retry",
+                extra={**correlation, "error_type": type(exc).__name__},
+            )
             raise
         countdown = build_retry_countdown(self.request.retries)
         logger.warning(
             "Raw job import scheduled for retry",
             extra={
-                "task_id": self.request.id,
+                **correlation,
                 "retry_count": self.request.retries,
                 "countdown_seconds": countdown,
                 "error_type": type(exc).__name__,
@@ -169,9 +178,7 @@ async def execute_raw_job_import(
                 "raw_record_id": ingestion_result.raw_record_id,
                 "job_post_id": ingestion_result.job_post_id,
                 "ingestion_action": ingestion_result.action.value,
-                "skill_sync_status": (
-                    skill_sync_result.skipped_reason or "succeeded"
-                ),
+                "skill_sync_status": (skill_sync_result.skipped_reason or "succeeded"),
             },
         )
         return RawJobImportTaskResult(
@@ -187,10 +194,19 @@ async def execute_raw_job_import(
             "Raw job import rejected without retry",
             extra={
                 "task_id": task_id,
+                "trace_id": message.trace_id,
+                "message_id": message.message_id,
                 "raw_record_id": raw_record_id,
                 "error_type": "contract_or_business_error",
             },
         )
+        raise
+    except Exception as exc:
+        if raw_record_id is not None:
+            try:
+                exc.__dict__["raw_record_id"] = raw_record_id
+            except (AttributeError, TypeError):
+                pass
         raise
     finally:
         await database.close()
@@ -233,3 +249,19 @@ def build_retry_countdown(retry_count: int) -> int:
     base = min(2 ** max(retry_count, 0), MAX_RETRY_COUNTDOWN_SECONDS)
     jitter = random.uniform(0, max(base * 0.2, 1))
     return min(int(base + jitter), MAX_RETRY_COUNTDOWN_SECONDS)
+
+
+def build_log_correlation(
+    *,
+    message_data: dict[str, object],
+    task_id: str,
+    raw_record_id: object | None,
+) -> dict[str, object | None]:
+    """只提取安全标识用于 Worker 日志，禁止携带 raw payload。"""
+
+    return {
+        "task_id": task_id,
+        "trace_id": message_data.get("trace_id"),
+        "message_id": message_data.get("message_id"),
+        "raw_record_id": raw_record_id,
+    }

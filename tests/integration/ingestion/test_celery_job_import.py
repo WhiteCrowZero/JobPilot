@@ -71,9 +71,7 @@ async def test_execute_raw_job_import_rebuilds_skills_after_transaction_one_comm
         await db_session.commit()
 
         assert ingestion_result.job_post_id is not None
-        assert (
-            await db_session.scalar(select(func.count()).select_from(JobPostSkill))
-        ) == 0
+        assert (await db_session.scalar(select(func.count()).select_from(JobPostSkill))) == 0
 
         result = await execute_raw_job_import(
             message_data=cast(dict[str, object], message.model_dump(mode="json")),

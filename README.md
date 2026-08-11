@@ -69,12 +69,12 @@ src/job_pilot/workers/
 |------|-----------|------------------------------------------------------------------------------------------------|
 | 阶段 0 | 已完成，待增强   | 已有注册、登录、JWT access/refresh token、当前用户、logout；下一步补 `user_sessions` 表、refresh rotation 与设备级会话管理。 |
 | 阶段 1 | 已完成       | 岗位 raw 摄入、规范化入库、fingerprint 去重、岗位列表/详情/筛选、分页、filter-options 缓存。                                |
-| 阶段 2 | 基础完成，待联调  | 技能字典、技能别名、岗位技能关系、按技能筛选、岗位详情技能展示；下一步接入 Worker 编排，让岗位导入后自动同步 `JobPostSkill`。                     |
+| 阶段 2 | 已完成       | 技能字典、技能别名、岗位技能关系、按技能筛选、岗位详情技能展示；岗位导入 Worker 已自动同步 `JobPostSkill`。                                  |
 | 阶段 3 | 已完成       | 收藏夹、岗位收藏、目标岗位、用户技能画像、用户数据隔离。                                                                   |
 | 阶段 4 | 已完成，待策略加强 | 已有 matched / weak / missing 技能差距分析；下一步统一 `skill_id + level` 匹配策略，并打通任务生成。                      |
 | 阶段 5 | 已完成，待闭环联调 | 已有知识点、题库、学习任务、作答/跳过、进度得分；下一步接入技能差距结果，并补用户技能评级更新策略。                                             |
 | 阶段 6 | 重点待做      | UserSession 表与会话管理。                                                                            |
-| 阶段 7 | 重点待做      | Celery + RabbitMQ 异步链路，爬虫与后端联调，岗位导入 Worker。                                                    |
+| 阶段 7 | 基础完成      | RabbitMQ + 单一 Celery 摄入任务、独立 simulator、两事务恢复与重复消费联调已完成；DLQ/管理重放后续增强。                            |
 | 阶段 8 | 重点待做      | 测试补强、代码质量审查、Docker 部署收口。                                                                       |
 | 阶段 9 | 看时间       | 第三方登录、Elasticsearch、Admin、线上监控、前端页面。                                                           |
 
@@ -178,8 +178,10 @@ uv run celery -A job_pilot.workers.celery_app:celery_app worker -P solo -l info
 按队列启动：
 
 ```powershell
-uv run celery -A job_pilot.workers.celery_app:celery_app worker -P solo -Q job.import,job.skill_sync -l info
+uv run celery -A job_pilot.workers.celery_app:celery_app worker -P solo -Q job.ingestion -l info
 ```
+
+独立 simulator 与完整联调步骤见 [`docs/mq_integration.md`](docs/mq_integration.md)。
 
 ### 7.5 数据库迁移
 

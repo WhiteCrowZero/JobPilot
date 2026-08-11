@@ -22,13 +22,13 @@
 
 ## 4. 独立 simulator 与联调资料
 
-- [ ] 4.1 创建独立 simulator 入口和固定 JSON 样本，仅加载 producer 配置与契约，通过 `send_task("job.import_raw", ...)` 发送且不导入 Worker task 或创建数据库连接。
-- [ ] 4.2 为 simulator 增加相同事件、不同 message 的相同内容、以及内容变化三种可重复样本，便于演示三层幂等行为。
-- [ ] 4.3 更新 README/联调文档：基础设施启动、迁移、指定队列 Worker 启动、simulator 执行、RabbitMQ 管理界面与数据库结果核查、失败后重放边界。
-- [ ] 4.4 编写端到端联调测试或受控手工验收脚本，验证 simulator → RabbitMQ → Worker → RawJobRecord / JobPost / JobPostSkill 的完整闭环。
+- [x] 4.1 创建独立 simulator 入口和固定 JSON 样本，仅加载 producer 配置与契约，通过 `send_task("job.import_raw", ...)` 发送且不导入 Worker task 或创建数据库连接。
+- [x] 4.2 为 simulator 增加相同事件、不同 message 的相同内容、以及内容变化三种可重复样本，便于演示三层幂等行为。
+- [x] 4.3 更新 README/联调文档：基础设施启动、迁移、指定队列 Worker 启动、simulator 执行、RabbitMQ 管理界面与数据库结果核查、失败后重放边界。
+- [x] 4.4 编写端到端联调测试或受控手工验收脚本，验证 simulator → RabbitMQ → Worker → RawJobRecord / JobPost / JobPostSkill 的完整闭环。
 
 ## 5. 验证与交付
 
-- [ ] 5.1 在可用基础设施下执行 Alembic upgrade、相关单元与集成测试；记录 RabbitMQ 或数据库不可用时的明确前置条件，不以跳过关键测试代替联调。
-- [ ] 5.2 执行 `uv run ruff format`、`uv run ruff check . --fix`、`uv run pytest` 和 `uv run pyright`，修复本变更引入的问题。
-- [ ] 5.3 复核日志不会输出完整 raw payload，且每条关键 Worker 日志能以 trace ID、message ID、raw record ID 和 Celery task ID 关联。
+- [x] 5.1 在可用基础设施下执行 Alembic upgrade、相关单元与集成测试；记录 RabbitMQ 或数据库不可用时的明确前置条件，不以跳过关键测试代替联调。
+- [x] 5.2 执行 `uv run ruff format`、`uv run ruff check . --fix`、`uv run pytest` 和 `uv run pyright`，修复本变更引入的问题。
+- [x] 5.3 复核日志不会输出完整 raw payload，且每条关键 Worker 日志能以 trace ID、message ID、raw record ID 和 Celery task ID 关联。

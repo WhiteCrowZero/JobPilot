@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 from job_pilot.workers.celery_app import celery_app
 from job_pilot.workers.tasks.import_raw_job import (
     MAX_RETRY_COUNTDOWN_SECONDS,
+    build_log_correlation,
     build_retry_countdown,
     is_retryable_ingestion_error,
 )
@@ -40,3 +41,22 @@ def test_retry_countdown_is_bounded(monkeypatch) -> None:
 
     assert build_retry_countdown(0) == 1
     assert build_retry_countdown(10) == MAX_RETRY_COUNTDOWN_SECONDS
+
+
+def test_log_correlation_excludes_raw_payload() -> None:
+    correlation = build_log_correlation(
+        message_data={
+            "message_id": "message-id",
+            "trace_id": "trace-id",
+            "raw_payload": {"secret": "must-not-log"},
+        },
+        task_id="task-id",
+        raw_record_id=42,
+    )
+
+    assert correlation == {
+        "task_id": "task-id",
+        "trace_id": "trace-id",
+        "message_id": "message-id",
+        "raw_record_id": 42,
+    }
