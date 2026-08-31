@@ -177,10 +177,38 @@ class JaabzJobAdapter(BaseJobAdapter):
         )
 
 
+class MockJobAdapter(BaseJobAdapter):
+    """模拟生产者的显式字段 adapter。"""
+
+    source_platform = KnownJobSourcePlatform.MOCK.value
+
+    def to_draft(self, raw_payload: dict[str, Any]) -> JobDraft:
+        return JobDraft(
+            source_platform=self.source_platform,
+            external_job_id=_first_text(raw_payload, "external_job_id", "job_id", "id"),
+            source_url=_first_text(raw_payload, "source_url", "job_url"),
+            title=_first_text(raw_payload, "title") or "",
+            company_name=_first_text(raw_payload, "company", "company_name"),
+            company_url=_first_text(raw_payload, "company_url"),
+            raw_location_text=_first_text(raw_payload, "location"),
+            raw_country_name=_first_text(raw_payload, "country"),
+            raw_city_name=_first_text(raw_payload, "city"),
+            raw_description=_first_text(raw_payload, "description"),
+            raw_experience=raw_payload.get("experience"),
+            raw_education=_first_text(raw_payload, "education"),
+            raw_employment_type=_first_text(raw_payload, "employment_type"),
+            raw_flexibility=_first_text(raw_payload, "workplace_type"),
+            raw_salary=_first_text(raw_payload, "salary"),
+            raw_skills=_skill_texts_from_value(raw_payload.get("skills")),
+            published_at_raw=raw_payload.get("published_at"),
+        )
+
+
 ADAPTER_REGISTRY: dict[str, type[BaseJobAdapter]] = {
     KnownJobSourcePlatform.ALIBABA.value: AlibabaJobAdapter,
     KnownJobSourcePlatform.TENCENT.value: TencentJobAdapter,
     KnownJobSourcePlatform.JAABZ.value: JaabzJobAdapter,
+    KnownJobSourcePlatform.MOCK.value: MockJobAdapter,
 }
 
 

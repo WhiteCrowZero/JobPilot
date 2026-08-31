@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_pilot.application import JobPilot
 from job_pilot.core.search import SqlLikeSearchBackend
-from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
 from job_pilot.modules.ingestion.service import JobSourceConfig
 from job_pilot.modules.job_posts.contracts import (
     JobPostSearchQuery as JobPostSearchParams,
@@ -20,6 +19,7 @@ from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 from job_pilot.modules.job_skills.repository import SkillDictionaryRepository
 from job_pilot.modules.job_skills.schemas import SkillListParams
 from tests.helpers.database import truncate_job_tables
+from tests.helpers.messages import build_test_raw_job_message
 
 
 @pytest.mark.asyncio
@@ -257,7 +257,7 @@ async def seed_job_posts(*, pilot: JobPilot, session: AsyncSession) -> int:
             name="阿里巴巴社招",
             base_url="https://talent.taotian.com/off-campus",
         ),
-        message=RawJobCollectedMessage(
+        message=build_test_raw_job_message(
             message_id="job-query-test:alibaba",
             source_platform="alibaba",
             external_job_id="ali-query-001",
@@ -289,7 +289,7 @@ async def seed_job_posts(*, pilot: JobPilot, session: AsyncSession) -> int:
             name="Jaabz",
             base_url="https://jaabz.com/jobs",
         ),
-        message=RawJobCollectedMessage(
+        message=build_test_raw_job_message(
             message_id="job-query-test:jaabz",
             source_platform="jaabz",
             external_job_id="jb-query-001",

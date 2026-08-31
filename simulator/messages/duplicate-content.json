@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "event_type": "job.raw.collected",
+  "message_id": "22222222-2222-4222-8222-222222222222",
+  "trace_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "producer": "jobpilot-simulator",
+  "produced_at": "2026-08-11T14:31:00Z",
+  "source_platform": "mock",
+  "external_job_id": "mock-10001",
+  "source_url": "https://example.test/jobs/mock-10001",
+  "fetched_at": "2026-08-11T14:30:50Z",
+  "raw_payload": {
+    "job_id": "mock-10001",
+    "job_url": "https://example.test/jobs/mock-10001",
+    "title": "Python Backend Engineer",
+    "company": "Example",
+    "location": "Remote",
+    "description": "Build backend services with FastAPI and PostgreSQL.",
+    "salary": "20-30K",
+    "skills": ["Python", "FastAPI", "PostgreSQL"]
+  }
+}

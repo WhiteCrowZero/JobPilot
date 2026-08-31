@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "event_type": "job.raw.collected",
+  "message_id": "33333333-3333-4333-8333-333333333333",
+  "trace_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  "producer": "jobpilot-simulator",
+  "produced_at": "2026-08-11T14:32:00Z",
+  "source_platform": "mock",
+  "external_job_id": "mock-10001",
+  "source_url": "https://example.test/jobs/mock-10001",
+  "fetched_at": "2026-08-11T14:31:50Z",
+  "raw_payload": {
+    "job_id": "mock-10001",
+    "job_url": "https://example.test/jobs/mock-10001",
+    "title": "Python Backend Engineer",
+    "company": "Example",
+    "location": "Remote",
+    "description": "Build durable backend services with FastAPI, PostgreSQL, and RabbitMQ.",
+    "salary": "30-40K",
+    "skills": ["Python", "FastAPI", "PostgreSQL", "RabbitMQ"]
+  }
+}

@@ -14,6 +14,7 @@ from job_pilot.modules.ingestion.repository import (
     RawJobIngestionRepository,
     RawRecordIngestionAction,
 )
+from job_pilot.modules.ingestion.sources import JobSourceConfig
 from job_pilot.modules.job_skills.contracts import RawSkillCandidate
 from job_pilot.modules.job_skills.normalization import (
     build_skill_content_hash,
@@ -35,15 +36,6 @@ class RawJobIngestionResult:
     action: RawRecordIngestionAction
     raw_skill_candidates: list[RawSkillCandidate]
     skill_content_hash: str | None
-
-
-@dataclass(slots=True, frozen=True)
-class JobSourceConfig:
-    """一次摄入任务绑定的明确来源实例。"""
-
-    platform: str
-    name: str
-    base_url: str
 
 
 class RawJobIngestionService:
@@ -215,3 +207,30 @@ def build_raw_job_ingestion_service(source_config: JobSourceConfig) -> RawJobIng
         source_config=source_config,
         repository=RawJobIngestionRepository(),
     )
+
+
+class RawJobSkillRecoveryService:
+    """仅从持久化 raw record 重建事务二的技能候选。"""
+
+    def __init__(self, repository: RawJobIngestionRepository) -> None:
+        self.repository = repository
+
+    async def rebuild_raw_skill_candidates(
+        self,
+        *,
+        session: AsyncSession,
+        raw_record_id: int,
+    ) -> list[RawSkillCandidate]:
+        rebuild_input = await self.repository.get_raw_skill_rebuild_input(
+            db=session,
+            raw_record_id=raw_record_id,
+        )
+        adapter = get_job_adapter(rebuild_input.source_platform)
+        draft = adapter.to_draft(rebuild_input.raw_payload)
+        return extract_raw_skill_candidates(draft.raw_skills)
+
+
+def build_raw_job_skill_recovery_service() -> RawJobSkillRecoveryService:
+    """组装基于 raw record 的技能候选恢复服务。"""
+
+    return RawJobSkillRecoveryService(repository=RawJobIngestionRepository())
