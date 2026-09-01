@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -14,36 +15,20 @@ from job_pilot.modules.job_posts.enums import KnownJobSourcePlatform
 """
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class JobDraft:
     """
     adapter 输出的中间结构，之后供 normalization 处理录入，应尽可能保持稳定。
-
-    adapter 只做来源字段到统一草稿字段的映射；
-    枚举归一、地点拆分、经验/学历解析等规则放 normalization。
+    adapter 只做来源字段到统一草稿字段的映射，字段解析等规则放 normalization。
     """
 
-    source_platform: str
-    external_job_id: str | None
-    source_url: str | None
-
     title: str
-    company_name: str | None
-    company_url: str | None
-
-    raw_location_text: str | None
-    raw_country_name: str | None
-    raw_city_name: str | None
-
+    raw_location: str | None
     raw_description: str | None
     raw_experience: str | int | None
     raw_education: str | None
-    raw_employment_type: str | None
-    raw_flexibility: str | None
-
     raw_salary: str | None
-    raw_skills: list[str]
-    published_at_raw: Any
+    published_at_raw: str | date | None
 
 
 class BaseJobAdapter(ABC):
@@ -58,8 +43,8 @@ class BaseJobAdapter(ABC):
         """把来源 raw payload 映射成 JobDraft。"""
 
 
-class AlibabaJobAdapter(BaseJobAdapter):
-    source_platform = KnownJobSourcePlatform.ALIBABA.value
+class TaotianJobAdapter(BaseJobAdapter):
+    source_platform = KnownJobSourcePlatform.TAOTIAN.value
 
     def to_draft(self, raw_payload: dict[str, Any]) -> JobDraft:
         source_url = _first_text(raw_payload, "job_url", "url", "source_url")
@@ -137,46 +122,6 @@ class TencentJobAdapter(BaseJobAdapter):
         )
 
 
-class JaabzJobAdapter(BaseJobAdapter):
-    source_platform = KnownJobSourcePlatform.JAABZ.value
-
-    def to_draft(self, raw_payload: dict[str, Any]) -> JobDraft:
-        source_url = _first_text(raw_payload, "job_url", "url", "source_url")
-        return JobDraft(
-            source_platform=self.source_platform,
-            external_job_id=_first_text(raw_payload, "job_id", "id", "position_id"),
-            source_url=source_url,
-            title=_first_text(raw_payload, "title", "job_name", "name") or "",
-            company_name=_first_text(raw_payload, "company_name", "company"),
-            company_url=_first_text(raw_payload, "company_url"),
-            raw_location_text=_first_text(raw_payload, "area", "location", "work_location"),
-            raw_country_name=_first_text(raw_payload, "country", "country_name"),
-            raw_city_name=_first_text(raw_payload, "city", "city_name"),
-            raw_description=_join_description_parts(
-                raw_payload, "details", "description", "job_desc", "requirement"
-            ),
-            raw_experience=raw_payload.get("experience"),
-            raw_education=_first_text(raw_payload, "degree", "education"),
-            raw_employment_type=_first_text(raw_payload, "job_type", "employment_type"),
-            raw_flexibility=_first_text(raw_payload, "flexibility", "workplace_type"),
-            raw_salary=_first_text(
-                raw_payload,
-                "salary",
-                "salary_text",
-                "salary_range",
-                "salary_desc",
-                "salary_description",
-                "pay",
-                "compensation",
-                "薪资",
-                "薪酬",
-            ),
-            # 当前来源还没有确认稳定技能字段，不能从 tags/keywords 等通用字段猜测。
-            raw_skills=[],
-            published_at_raw=raw_payload.get("release_time") or raw_payload.get("publish_time"),
-        )
-
-
 class MockJobAdapter(BaseJobAdapter):
     """模拟生产者的显式字段 adapter。"""
 
@@ -205,9 +150,8 @@ class MockJobAdapter(BaseJobAdapter):
 
 
 ADAPTER_REGISTRY: dict[str, type[BaseJobAdapter]] = {
-    KnownJobSourcePlatform.ALIBABA.value: AlibabaJobAdapter,
+    KnownJobSourcePlatform.TAOTIAN.value: TaotianJobAdapter,
     KnownJobSourcePlatform.TENCENT.value: TencentJobAdapter,
-    KnownJobSourcePlatform.JAABZ.value: JaabzJobAdapter,
     KnownJobSourcePlatform.MOCK.value: MockJobAdapter,
 }
 

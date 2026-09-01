@@ -23,12 +23,11 @@ MQ 解耦爬虫和后端
 其中，MQ是业务上的解耦层，draft是数据上的解耦层
 - adapter 负责“外部爬虫数据 → 内部 Draft”
 - normalize 负责“Draft → 后端业务结构 / 入库结构”
-- 中间的 draft 尽可能稳定，更好的承担解耦职责
 """
 
 
 class RawJobCollectedMessage(BaseModel):
-    """crawler -> RabbitMQ -> backend ingestion worker 的 V1 消息契约。
+    """crawler -> RabbitMQ -> backend ingestion worker 的消息契约。
 
     爬虫系统只需要遵守这个 raw contract，不访问后端数据库。
     后端收到后负责保存 raw_job_records，并调用 adapter + normalizer。
@@ -46,8 +45,7 @@ class RawJobCollectedMessage(BaseModel):
     source_url: str | None = Field(default=None, max_length=1000)
 
     producer: str = Field(min_length=1, max_length=100)
-    produced_at: datetime
-    fetched_at: datetime | None = None
+    fetched_at: datetime
 
     raw_payload: dict[str, JsonValue]
 
@@ -58,7 +56,7 @@ class RawJobCollectedMessage(BaseModel):
 
         return str(UUID(value))
 
-    @field_validator("produced_at", "fetched_at")
+    @field_validator("fetched_at")
     @classmethod
     def validate_timezone_aware_datetime(cls, value: datetime | None) -> datetime | None:
         """消息时间必须包含明确时区，避免跨进程解释不一致。"""

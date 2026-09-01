@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from job_pilot.modules.ingestion.adapters import (
-    AlibabaJobAdapter,
     JaabzJobAdapter,
+    TaotianJobAdapter,
     TencentJobAdapter,
 )
 
@@ -27,7 +27,7 @@ def test_job_adapters_do_not_guess_skill_like_fields_without_explicit_mapping() 
     }
 
     drafts = [
-        AlibabaJobAdapter().to_draft(raw_payload),
+        TaotianJobAdapter().to_draft(raw_payload),
         TencentJobAdapter().to_draft(raw_payload),
         JaabzJobAdapter().to_draft(raw_payload),
     ]

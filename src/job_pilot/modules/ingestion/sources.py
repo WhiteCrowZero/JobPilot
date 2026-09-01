@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from job_pilot.modules.ingestion.adapters import (
-    AlibabaJobAdapter,
     BaseJobAdapter,
     JaabzJobAdapter,
     MockJobAdapter,
+    TaotianJobAdapter,
     TencentJobAdapter,
 )
 from job_pilot.modules.ingestion.exceptions import UnsupportedJobSourcePlatformError
@@ -36,7 +36,7 @@ SOURCE_REGISTRY: dict[str, RegisteredJobSource] = {
             name="阿里巴巴社招",
             base_url="https://talent.taotian.com/off-campus",
         ),
-        adapter_type=AlibabaJobAdapter,
+        adapter_type=TaotianJobAdapter,
     ),
     "tencent": RegisteredJobSource(
         config=JobSourceConfig(

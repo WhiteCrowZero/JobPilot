@@ -259,7 +259,7 @@ class RawJobIngestionRepository:
         if message.trace_id:
             raw_record.trace_id = message.trace_id
         if message.producer:
-            raw_record.producer = message.producer
+            raw_record.producer_name = message.producer
         if message.source_url and not raw_record.source_url:
             raw_record.source_url = message.source_url
         if message.external_job_id and not raw_record.external_job_id:

@@ -28,9 +28,9 @@ if TYPE_CHECKING:
 class RawJobRecord(TimestampMixin, Base):
     """原始岗位记录表。
 
-    这是 crawler / 文件导入 / RabbitMQ 与后端 normalized tables 的边界表。
+    这是 文件导入 / RabbitMQ 与后端 normalized tables 的边界表。
     爬虫只推 raw message，不访问后端数据库，不写 job_posts，不决定统一枚举；
-    后端 ingestion worker 保存 raw，然后调用 adapter + normalizer 生成 job_posts/details/locations。
+    后端 ingestion worker 保存 raw，然后调用 adapter + normalizer 生成 job_posts、job_skills。
     """
 
     __tablename__ = "raw_job_records"
@@ -58,13 +58,16 @@ class RawJobRecord(TimestampMixin, Base):
         comment="原始岗位记录主键 ID。",
     )
 
+    """
+    来源字段
+    """
+
     source_id: Mapped[int] = mapped_column(
         ForeignKey("job_sources.id", ondelete="RESTRICT"),
         nullable=False,
         comment="来源 ID，关联 job_sources.id。",
     )
 
-    # RabbitMQ / crawler message contract fields. File import can leave them NULL.
     message_id: Mapped[str | None] = mapped_column(
         String(64),
         nullable=True,
@@ -77,7 +80,7 @@ class RawJobRecord(TimestampMixin, Base):
         comment="链路追踪 ID，用于串联 crawler、MQ、ingestion worker 日志。",
     )
 
-    producer: Mapped[str | None] = mapped_column(
+    producer_name: Mapped[str | None] = mapped_column(
         String(100),
         nullable=True,
         comment="生产者名称，例如 alibaba-crawler、excel-importer。",
@@ -95,16 +98,14 @@ class RawJobRecord(TimestampMixin, Base):
         comment="来源岗位详情 URL。规范化详情表可冗余一份用于展示。",
     )
 
+    """
+    原始信息字段
+    """
+
     raw_content_hash: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
         comment="raw_payload 规范化序列化后的内容 hash，用于幂等和变化检测。",
-    )
-
-    skill_content_hash: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True,
-        comment="raw_payload 中结构化技能候选内容的 hash，用于追踪技能字段变化。",
     )
 
     raw_payload: Mapped[dict[str, Any]] = mapped_column(
@@ -112,6 +113,10 @@ class RawJobRecord(TimestampMixin, Base):
         nullable=False,
         comment="来源原始字段，PostgreSQL JSONB。",
     )
+
+    """
+    状态信息字段
+    """
 
     status: Mapped[RawJobRecordStatus] = mapped_column(
         enum_column(RawJobRecordStatus, name="raw_job_record_status", length=30),
@@ -163,26 +168,6 @@ class RawJobRecord(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
         comment="后端完成规范化处理的时间。",
-    )
-
-    first_seen_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        comment="系统第一次看到该来源记录的时间。",
-    )
-
-    last_seen_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        comment="系统最近一次看到该来源记录的时间。",
-    )
-
-    seen_count: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=1,
-        server_default="1",
-        comment="同一来源 raw 内容被重复看到的次数。",
     )
 
     source: Mapped[JobSource] = relationship(
