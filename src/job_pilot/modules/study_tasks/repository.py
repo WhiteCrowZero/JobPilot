@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from job_pilot.core.search import fetch_offset_page
-from job_pilot.modules.job_posts.models import JobPost
+from job_pilot.modules.job_posts.models import JobPost, JobSource
 from job_pilot.modules.job_skills.models import JobPostSkill, Skill
 from job_pilot.modules.job_targets.models import JobTarget
 from job_pilot.modules.job_targets.policies import CURRENT_TARGET_STATUSES
@@ -126,13 +126,14 @@ class StudyTaskRepository:
                 JobTarget.priority,
                 JobTarget.is_primary,
                 JobPost.title,
-                JobPost.company_name,
+                JobSource.name,
                 Skill.id,
                 Skill.name,
                 UserSkill.proficiency_level,
                 match_status,
             )
             .join(JobPost, JobPost.id == JobTarget.job_post_id)
+            .join(JobSource, JobSource.id == JobPost.source_id)
             .join(JobPostSkill, JobPostSkill.job_post_id == JobTarget.job_post_id)
             .join(Skill, Skill.id == JobPostSkill.skill_id)
             .outerjoin(

@@ -61,7 +61,7 @@ async def main() -> None:
             )
 
         print(f"raw_record_count={len(raw_records)}")
-        print(f"raw_seen_counts={[record.seen_count for record in raw_records]}")
+        print(f"raw_message_ids={[record.message_id for record in raw_records]}")
         print(f"raw_skill_statuses={[record.skill_sync_status.value for record in raw_records]}")
         print(f"job_post_count={job_count}")
         print(f"job_title={job_post.title if job_post is not None else None}")
@@ -72,8 +72,8 @@ async def main() -> None:
             raise RuntimeError("MQ ingestion verification failed: unexpected deduplication result")
         if job_post.salary_text != "30-40K":
             raise RuntimeError("MQ ingestion verification failed: changed content was not applied")
-        if skill_names != ["FastAPI", "PostgreSQL", "Python", "RabbitMQ"]:
-            raise RuntimeError("MQ ingestion verification failed: skills were not synchronized")
+        if skill_names:
+            raise RuntimeError("MQ ingestion verification failed: skill sync should be deferred")
     finally:
         await resources.close()
 

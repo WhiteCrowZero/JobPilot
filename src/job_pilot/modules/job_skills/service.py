@@ -11,10 +11,7 @@ from job_pilot.modules.job_skills.contracts import (
     SkillSyncResult,
 )
 from job_pilot.modules.job_skills.exceptions import JobPostForSkillSyncNotFoundError
-from job_pilot.modules.job_skills.normalization import (
-    build_skill_content_hash,
-    normalize_skill_alias,
-)
+from job_pilot.modules.job_skills.normalization import normalize_skill_alias
 from job_pilot.modules.job_skills.repository import (
     JobPostSkillRepository,
     SkillDictionaryRepository,
@@ -110,7 +107,7 @@ class JobSkillSyncService:
     ) -> SkillSyncResult:
         """用当前 raw 技能候选替换岗位标准技能关系。
 
-        本方法只负责事务 2 的业务内容：job_post_skills 与 job_posts.skill_content_hash。
+        本方法只负责事务 2 的岗位技能关系替换。
         外层 orchestration/worker 决定何时调用和如何提交事务。
         """
 
@@ -126,23 +123,6 @@ class JobSkillSyncService:
                 created_count=0,
                 matched_count=0,
                 unmatched_texts=[],
-                skill_content_hash=None,
-            )
-
-        skill_content_hash = build_skill_content_hash(candidates)
-        previous_hash = await self.repository.get_job_skill_content_hash(
-            db=db,
-            job_post_id=job_post_id,
-        )
-        if previous_hash == skill_content_hash:
-            return SkillSyncResult(
-                job_post_id=job_post_id,
-                synced=False,
-                skipped_reason="skill_content_hash_unchanged",
-                created_count=0,
-                matched_count=0,
-                unmatched_texts=[],
-                skill_content_hash=skill_content_hash,
             )
 
         normalization_result = await self.skill_normalization_service.normalize_candidates(
@@ -154,11 +134,6 @@ class JobSkillSyncService:
             job_post_id=job_post_id,
             matches=normalization_result.matched,
         )
-        await self.repository.update_job_skill_content_hash(
-            db=db,
-            job_post_id=job_post_id,
-            skill_content_hash=skill_content_hash,
-        )
         # TODO：filter-options 缓存后续改为后台刷新或在技能同步成功后统一失效。
         return SkillSyncResult(
             job_post_id=job_post_id,
@@ -167,7 +142,6 @@ class JobSkillSyncService:
             created_count=created_count,
             matched_count=len(normalization_result.matched),
             unmatched_texts=normalization_result.unmatched,
-            skill_content_hash=skill_content_hash,
         )
 
 

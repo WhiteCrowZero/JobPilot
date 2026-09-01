@@ -55,7 +55,6 @@ async def truncate_workbench_tables(session: AsyncSession) -> None:
                 job_collections,
                 job_collection_folders,
                 job_post_skills,
-                job_post_details,
                 job_posts,
                 raw_job_records,
                 job_sources,
@@ -77,7 +76,6 @@ async def truncate_job_tables(session: AsyncSession) -> None:
             """
             TRUNCATE TABLE
                 job_post_skills,
-                job_post_details,
                 job_posts,
                 raw_job_records,
                 job_sources,
@@ -131,7 +129,6 @@ async def truncate_learning_tables(session: AsyncSession) -> None:
                 job_collections,
                 job_collection_folders,
                 job_post_skills,
-                job_post_details,
                 job_posts,
                 raw_job_records,
                 job_sources,

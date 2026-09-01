@@ -15,11 +15,6 @@ from job_pilot.modules.ingestion.repository import (
     RawRecordIngestionAction,
 )
 from job_pilot.modules.ingestion.sources import JobSourceConfig
-from job_pilot.modules.job_skills.contracts import RawSkillCandidate
-from job_pilot.modules.job_skills.normalization import (
-    build_skill_content_hash,
-    extract_raw_skill_candidates,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +29,6 @@ class RawJobIngestionResult:
     job_post_id: int | None
     created_job_post: bool
     action: RawRecordIngestionAction
-    raw_skill_candidates: list[RawSkillCandidate]
-    skill_content_hash: str | None
 
 
 class RawJobIngestionService:
@@ -98,32 +91,27 @@ class RawJobIngestionService:
                 job_post_id=job_post_id,
                 created_job_post=False,
                 action=raw_record_result.action,
-                raw_skill_candidates=[],
-                skill_content_hash=raw_record.skill_content_hash,
             )
 
         try:
             adapter = self._get_adapter(message.source_platform)
             draft = adapter.to_draft(message.raw_payload)
-            raw_skill_candidates = extract_raw_skill_candidates(draft.raw_skills)
-            skill_content_hash = build_skill_content_hash(raw_skill_candidates)
-            normalized = normalize_job_draft(draft)
+            normalized = normalize_job_draft(
+                draft,
+                source_platform=message.source_platform,
+                external_job_id=message.external_job_id,
+                source_url=message.source_url,
+            )
             job_post, created_job_post_flag = await self.repository.upsert_job_post(
                 db=session,
                 source_id=source.id,
                 raw_record_id=raw_record.id,
                 normalized=normalized,
             )
-            await self.repository.upsert_job_post_detail(
-                db=session,
-                job_post_id=job_post.id,
-                normalized=normalized,
-            )
             # TODO：filter-options 缓存后续改为后台刷新或在岗位写入成功后统一失效。
             await self.repository.mark_raw_record_normalized(
                 db=session,
                 raw_record=raw_record,
-                skill_content_hash=skill_content_hash,
             )
         except AppError as exc:
             await self.repository.mark_raw_record_failed(
@@ -165,8 +153,6 @@ class RawJobIngestionService:
             job_post_id=job_post.id,
             created_job_post=created_job_post_flag,
             action=raw_record_result.action,
-            raw_skill_candidates=raw_skill_candidates,
-            skill_content_hash=skill_content_hash,
         )
 
     def _normalize_source_config(self, source_config: JobSourceConfig) -> JobSourceConfig:
@@ -207,30 +193,3 @@ def build_raw_job_ingestion_service(source_config: JobSourceConfig) -> RawJobIng
         source_config=source_config,
         repository=RawJobIngestionRepository(),
     )
-
-
-class RawJobSkillRecoveryService:
-    """仅从持久化 raw record 重建事务二的技能候选。"""
-
-    def __init__(self, repository: RawJobIngestionRepository) -> None:
-        self.repository = repository
-
-    async def rebuild_raw_skill_candidates(
-        self,
-        *,
-        session: AsyncSession,
-        raw_record_id: int,
-    ) -> list[RawSkillCandidate]:
-        rebuild_input = await self.repository.get_raw_skill_rebuild_input(
-            db=session,
-            raw_record_id=raw_record_id,
-        )
-        adapter = get_job_adapter(rebuild_input.source_platform)
-        draft = adapter.to_draft(rebuild_input.raw_payload)
-        return extract_raw_skill_candidates(draft.raw_skills)
-
-
-def build_raw_job_skill_recovery_service() -> RawJobSkillRecoveryService:
-    """组装基于 raw record 的技能候选恢复服务。"""
-
-    return RawJobSkillRecoveryService(repository=RawJobIngestionRepository())

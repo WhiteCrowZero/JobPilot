@@ -36,4 +36,3 @@ class SkillSyncResult:
     created_count: int
     matched_count: int
     unmatched_texts: list[str]
-    skill_content_hash: str | None

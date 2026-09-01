@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from job_pilot.modules.ingestion.adapters import (
     BaseJobAdapter,
-    JaabzJobAdapter,
     MockJobAdapter,
     TaotianJobAdapter,
     TencentJobAdapter,
@@ -30,11 +29,11 @@ class RegisteredJobSource:
 
 
 SOURCE_REGISTRY: dict[str, RegisteredJobSource] = {
-    "alibaba": RegisteredJobSource(
+    "taotian": RegisteredJobSource(
         config=JobSourceConfig(
-            platform="alibaba",
-            name="阿里巴巴社招",
-            base_url="https://talent.taotian.com/off-campus",
+            platform="taotian",
+            name="淘天招聘",
+            base_url="https://talent.taotian.com",
         ),
         adapter_type=TaotianJobAdapter,
     ),
@@ -45,14 +44,6 @@ SOURCE_REGISTRY: dict[str, RegisteredJobSource] = {
             base_url="https://careers.tencent.com",
         ),
         adapter_type=TencentJobAdapter,
-    ),
-    "jaabz": RegisteredJobSource(
-        config=JobSourceConfig(
-            platform="jaabz",
-            name="Jaabz",
-            base_url="https://jaabz.com/jobs",
-        ),
-        adapter_type=JaabzJobAdapter,
     ),
     "mock": RegisteredJobSource(
         config=JobSourceConfig(

@@ -1,35 +1,42 @@
 from __future__ import annotations
 
-from job_pilot.modules.ingestion.adapters import (
-    JaabzJobAdapter,
-    TaotianJobAdapter,
-    TencentJobAdapter,
-)
+from job_pilot.modules.ingestion.adapters import TaotianJobAdapter, TencentJobAdapter
 
 
-def test_job_adapters_do_not_guess_skill_like_fields_without_explicit_mapping() -> None:
-    """adapter 只映射已确认的来源字段，不从通用字段名猜测技能。"""
+def test_job_adapters_only_map_confirmed_job_fields() -> None:
+    """adapter 只映射岗位草稿字段，不猜测技能或公司字段。"""
 
     raw_payload = {
-        "job_id": "source-001",
-        "id": "source-001",
-        "position_id": "source-001",
-        "job_url": "https://jobs.example.com/source-001",
         "title": "Backend Engineer",
         "job_name": "Backend Engineer",
         "area": "北京",
-        "city_name": "北京",
+        "city_name": "深圳",
+        "description": "负责服务端开发",
+        "requirement": "本科，三年以上经验",
+        "experience": "3年以上",
+        "degree": "本科",
+        "salary": "20-30K",
+        "publish_time": "2026-08-01",
         "skills": ["Python", "FastAPI"],
-        "tags": ["Redis"],
-        "keywords": "Docker, Kubernetes",
-        "技术栈": "FastAPI / PostgreSQL",
-        "技能": "Python",
+        "company_name": "不应进入草稿",
     }
 
-    drafts = [
-        TaotianJobAdapter().to_draft(raw_payload),
-        TencentJobAdapter().to_draft(raw_payload),
-        JaabzJobAdapter().to_draft(raw_payload),
-    ]
+    taotian_draft = TaotianJobAdapter().to_draft(raw_payload)
+    tencent_draft = TencentJobAdapter().to_draft(raw_payload)
 
-    assert [draft.raw_skills for draft in drafts] == [[], [], []]
+    assert taotian_draft.title == "Backend Engineer"
+    assert taotian_draft.raw_location == "北京"
+    assert taotian_draft.raw_description == "负责服务端开发\n\n本科，三年以上经验"
+    assert taotian_draft.raw_experience == "3年以上"
+    assert taotian_draft.raw_education == "本科"
+    assert taotian_draft.raw_salary == "20-30K"
+    assert tencent_draft.raw_location == "深圳"
+    assert set(taotian_draft.__dataclass_fields__) == {
+        "title",
+        "raw_location",
+        "raw_description",
+        "raw_experience",
+        "raw_education",
+        "raw_salary",
+        "published_at_raw",
+    }

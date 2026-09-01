@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_pilot.modules.job_skills.contracts import RawSkillCandidate, SkillAliasMatch
 from job_pilot.modules.job_skills.exceptions import JobPostForSkillSyncNotFoundError
 from job_pilot.modules.job_skills.normalization import (
-    build_skill_content_hash,
     extract_raw_skill_candidates,
     normalize_skill_alias,
 )
@@ -39,34 +38,13 @@ class FakeSkillDictionaryRepository(SkillDictionaryRepository):
 
 
 class FakeJobPostSkillRepository(JobPostSkillRepository):
-    def __init__(self, previous_hash: str | None = None, job_post_exists: bool = True) -> None:
-        self.previous_hash = previous_hash
+    def __init__(self, job_post_exists: bool = True) -> None:
         self._job_post_exists = job_post_exists
-        self.updated_hash: str | None = None
         self.replaced_matches: list[SkillAliasMatch] = []
 
     async def job_post_exists(self, *, db: AsyncSession, job_post_id: int) -> bool:
         _ = db, job_post_id
         return self._job_post_exists
-
-    async def get_job_skill_content_hash(
-        self,
-        *,
-        db: AsyncSession,
-        job_post_id: int,
-    ) -> str | None:
-        _ = db, job_post_id
-        return self.previous_hash
-
-    async def update_job_skill_content_hash(
-        self,
-        *,
-        db: AsyncSession,
-        job_post_id: int,
-        skill_content_hash: str | None,
-    ) -> None:
-        _ = db, job_post_id
-        self.updated_hash = skill_content_hash
 
     async def replace_skills_for_job(
         self,
@@ -91,13 +69,6 @@ def test_extract_raw_skill_candidates_only_reads_structured_fields() -> None:
     candidates = extract_raw_skill_candidates(["Python", "Fast API", "Redis, Docker"])
 
     assert [candidate.text for candidate in candidates] == ["Python", "Fast API", "Redis", "Docker"]
-
-
-def test_build_skill_content_hash_is_stable_after_reordering() -> None:
-    candidates_a = [RawSkillCandidate("Python"), RawSkillCandidate("Fast API")]
-    candidates_b = [RawSkillCandidate("fastapi"), RawSkillCandidate("python")]
-
-    assert build_skill_content_hash(candidates_a) == build_skill_content_hash(candidates_b)
 
 
 @pytest.mark.asyncio
@@ -144,35 +115,11 @@ async def test_sync_from_raw_candidates_replaces_job_skills() -> None:
         (1, "Python"),
         (3, "PostgreSQL"),
     ]
-    assert fake_repository.updated_hash == build_skill_content_hash(candidates)
-
-
-@pytest.mark.asyncio
-async def test_sync_from_raw_candidates_skips_when_hash_unchanged() -> None:
-    candidates = [RawSkillCandidate("Python"), RawSkillCandidate("Postgres")]
-    skill_content_hash = build_skill_content_hash(candidates)
-    fake_repository = FakeJobPostSkillRepository(previous_hash=skill_content_hash)
-    service = JobSkillSyncService(
-        skill_normalization_service=SkillNormalizationService(
-            repository=FakeSkillDictionaryRepository()
-        ),
-        repository=fake_repository,
-    )
-
-    result = await service.sync_from_raw_candidates(
-        db=cast(AsyncSession, object()),
-        job_post_id=1,
-        candidates=candidates,
-    )
-
-    assert result.synced is False
-    assert result.skipped_reason == "skill_content_hash_unchanged"
-    assert fake_repository.replaced_matches == []
 
 
 @pytest.mark.asyncio
 async def test_sync_from_raw_candidates_keeps_existing_skills_when_candidates_are_absent() -> None:
-    fake_repository = FakeJobPostSkillRepository(previous_hash="old-hash")
+    fake_repository = FakeJobPostSkillRepository()
     service = JobSkillSyncService(
         skill_normalization_service=SkillNormalizationService(
             repository=FakeSkillDictionaryRepository()
@@ -190,7 +137,6 @@ async def test_sync_from_raw_candidates_keeps_existing_skills_when_candidates_ar
     assert result.created_count == 0
     assert fake_repository.replaced_matches == []
     assert result.skipped_reason == "no_raw_skill_candidates"
-    assert fake_repository.updated_hash is None
 
 
 @pytest.mark.asyncio

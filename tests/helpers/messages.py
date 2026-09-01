@@ -34,7 +34,6 @@ def build_test_raw_job_message(
         message_id=stable_test_uuid(message_id),
         trace_id=stable_test_uuid(trace_id or f"trace:{message_id}"),
         producer=producer,
-        produced_at=TEST_PRODUCED_AT,
         fetched_at=TEST_PRODUCED_AT,
         source_platform=source_platform,
         external_job_id=external_job_id,

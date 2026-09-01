@@ -21,7 +21,7 @@ async def search_job_posts(
     pilot: JobPilotDep,
     params: Annotated[JobPostSearchParams, Query()],
 ) -> JobPostListResponse:
-    """查询岗位列表，支持关键词、枚举、薪资、地点文本和时间范围筛选。"""
+    """查询岗位列表，支持关键词、来源、学历、地点、技能和发布时间筛选。"""
 
     query = JobPostSearchQuery(**params.model_dump())
     return await pilot.job_posts.search(query)

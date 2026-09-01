@@ -13,16 +13,10 @@ from sqlalchemy.exc import TimeoutError as SqlAlchemyTimeoutError
 from job_pilot.core.config import settings
 from job_pilot.core.exceptions import AppError
 from job_pilot.core.logging import log_app_event
-from job_pilot.core.search import SqlLikeSearchBackend
-from job_pilot.db.session import DatabaseResource, build_database_resource
+from job_pilot.db.session import build_database_resource
 from job_pilot.modules.ingestion.contracts import RawJobCollectedMessage
-from job_pilot.modules.ingestion.repository import RawJobIngestionRepository
-from job_pilot.modules.ingestion.service import (
-    build_raw_job_ingestion_service,
-    build_raw_job_skill_recovery_service,
-)
+from job_pilot.modules.ingestion.service import build_raw_job_ingestion_service
 from job_pilot.modules.ingestion.sources import get_registered_job_source
-from job_pilot.modules.job_skills.service import build_job_skill_sync_service
 from job_pilot.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -54,7 +48,7 @@ class RawJobImportTaskResult:
 
 @celery_app.task(bind=True, name="job.import_raw", max_retries=MAX_IMPORT_RETRIES)
 def import_raw_job(self: Task, message_data: dict[str, object]) -> dict[str, object]:
-    """消费一条岗位消息，并以两个数据库事务完成导入与技能同步。"""
+    """消费一条岗位消息并完成岗位主数据导入。"""
 
     try:
         result = asyncio.run(
@@ -99,7 +93,6 @@ async def execute_raw_job_import(
     message = RawJobCollectedMessage.model_validate(message_data)
     registered_source = get_registered_job_source(message.source_platform)
     database = build_database_resource(settings)
-    repository = RawJobIngestionRepository()
     raw_record_id: int | None = None
 
     try:
@@ -119,55 +112,6 @@ async def execute_raw_job_import(
                     await session.commit()
                 raise
 
-        if ingestion_result.job_post_id is None:
-            return RawJobImportTaskResult(
-                raw_record_id=ingestion_result.raw_record_id,
-                job_post_id=None,
-                ingestion_action=ingestion_result.action.value,
-                skill_sync_status="not_applicable",
-                matched_skill_count=0,
-                unmatched_skills=[],
-            )
-
-        try:
-            async with database.session_factory() as session:
-                recovery_service = build_raw_job_skill_recovery_service()
-                candidates = await recovery_service.rebuild_raw_skill_candidates(
-                    session=session,
-                    raw_record_id=ingestion_result.raw_record_id,
-                )
-                skill_sync_result = await build_job_skill_sync_service(
-                    SqlLikeSearchBackend()
-                ).sync_from_raw_candidates(
-                    db=session,
-                    job_post_id=ingestion_result.job_post_id,
-                    candidates=candidates,
-                )
-                await repository.mark_skill_sync_succeeded(
-                    db=session,
-                    raw_record_id=ingestion_result.raw_record_id,
-                    skipped=skill_sync_result.skipped_reason == "no_raw_skill_candidates",
-                )
-                await session.commit()
-        except Exception as exc:
-            try:
-                await _record_skill_sync_failure(
-                    database=database,
-                    raw_record_id=ingestion_result.raw_record_id,
-                    error_message=str(exc),
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to persist raw job skill synchronization error",
-                    extra={
-                        "task_id": task_id,
-                        "trace_id": message.trace_id,
-                        "message_id": message.message_id,
-                        "raw_record_id": ingestion_result.raw_record_id,
-                    },
-                )
-            raise
-
         log_app_event(
             logger,
             "Raw job import completed",
@@ -178,16 +122,16 @@ async def execute_raw_job_import(
                 "raw_record_id": ingestion_result.raw_record_id,
                 "job_post_id": ingestion_result.job_post_id,
                 "ingestion_action": ingestion_result.action.value,
-                "skill_sync_status": (skill_sync_result.skipped_reason or "succeeded"),
+                "skill_sync_status": "not_started",
             },
         )
         return RawJobImportTaskResult(
             raw_record_id=ingestion_result.raw_record_id,
             job_post_id=ingestion_result.job_post_id,
             ingestion_action=ingestion_result.action.value,
-            skill_sync_status=skill_sync_result.skipped_reason or "succeeded",
-            matched_skill_count=skill_sync_result.matched_count,
-            unmatched_skills=skill_sync_result.unmatched_texts,
+            skill_sync_status="not_started",
+            matched_skill_count=0,
+            unmatched_skills=[],
         )
     except (PydanticValidationError, AppError):
         logger.warning(
@@ -210,24 +154,6 @@ async def execute_raw_job_import(
         raise
     finally:
         await database.close()
-
-
-async def _record_skill_sync_failure(
-    *,
-    database: DatabaseResource,
-    raw_record_id: int,
-    error_message: str,
-) -> None:
-    """用独立事务保留技能同步失败诊断。"""
-
-    async with database.session_factory() as session:
-        repository = RawJobIngestionRepository()
-        await repository.mark_skill_sync_failed(
-            db=session,
-            raw_record_id=raw_record_id,
-            error_message=error_message,
-        )
-        await session.commit()
 
 
 def is_retryable_ingestion_error(exc: BaseException) -> bool:

@@ -61,20 +61,6 @@ async def test_search_job_posts_parses_repeated_skill_ids(
 
 
 @pytest.mark.asyncio
-async def test_search_job_posts_rejects_invalid_salary_range(
-    api_client: httpx.AsyncClient,
-) -> None:
-    """岗位搜索 HTTP 层暴露 schema range 校验。"""
-
-    response = await api_client.get(
-        JOBS_SEARCH_ENDPOINT,
-        params={"salary_min": "30000", "salary_max": "10000"},
-    )
-
-    assert response.status_code == 422
-
-
-@pytest.mark.asyncio
 async def test_search_job_posts_rejects_invalid_published_time_range(
     api_client: httpx.AsyncClient,
 ) -> None:

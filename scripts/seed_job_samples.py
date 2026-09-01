@@ -24,9 +24,8 @@ DEFAULT_MYSQL_URL = "mysql+pymysql://root:123456@127.0.0.1:3306/spider_test"
 # =============================================================================
 # 本地导入配置
 # =============================================================================
-# 可选值：alibaba / tencent / jaabz / all
+# 可选值：taotian / tencent / all
 IMPORT_SOURCE = "all"
-# IMPORT_SOURCE = "jaabz"
 
 # 每个来源表导入多少条数据
 IMPORT_LIMIT = 100
@@ -61,13 +60,13 @@ class ImportSourceResult:
 
 
 SOURCE_TABLES: dict[str, SourceTableConfig] = {
-    "alibaba": SourceTableConfig(
+    "taotian": SourceTableConfig(
         table="ali_job",
         external_id_column="job_id",
         source_url_column="job_url",
-        producer="alibaba_crawler",
-        source_name="阿里巴巴社招",
-        source_base_url="https://talent.taotian.com/off-campus",
+        producer="taotian_crawler",
+        source_name="淘天招聘",
+        source_base_url="https://talent.taotian.com",
     ),
     "tencent": SourceTableConfig(
         table="tencent_job",
@@ -76,14 +75,6 @@ SOURCE_TABLES: dict[str, SourceTableConfig] = {
         producer="tencent_crawler",
         source_name="腾讯招聘",
         source_base_url="https://careers.tencent.com",
-    ),
-    "jaabz": SourceTableConfig(
-        table="jaabz",
-        external_id_column="job_id",
-        source_url_column="job_url",
-        producer="jaabz_crawler",
-        source_name="Jaabz",
-        source_base_url="https://jaabz.com/jobs",
     ),
 }
 
@@ -129,12 +120,11 @@ def build_raw_job_message(
             raw_hash=raw_hash,
         ),
         trace_id=build_trace_id(source_platform=source_platform, producer=config.producer),
-        produced_at=datetime.now(UTC),
         source_platform=source_platform,
         external_job_id=external_job_id,
         source_url=source_url,
         producer=config.producer,
-        fetched_at=None,
+        fetched_at=datetime.now(UTC),
         raw_payload=row,
     )
 
@@ -340,13 +330,6 @@ def _text_or_none(value: object | None) -> str | None:
 # =============================================================================
 # 后续岗位技能同步说明
 # =============================================================================
-# 当前 seed_job_samples.py 只负责事务 1：导入 raw_job_records、job_posts、job_post_details。
-# 岗位技能同步会在后续独立 worker / 编排层实现，不放进这个导入脚本。
-#
-# 后续 worker 需要完成：
-# 1. 读取岗位摄入结果中的 raw_skill_candidates / skill_content_hash。
-# 2. 开启独立事务同步 job_post_skills。
-# 3. 写回 job_posts.skill_content_hash，避免重复同步相同技能内容。
-# 4. 技能同步失败时只记录错误并允许重试，不回滚已经成功的岗位主数据导入。
+# 当前脚本只负责导入 raw_job_records 与 job_posts；技能提取和同步后续统一实现。
 if __name__ == "__main__":
     asyncio.run(main())

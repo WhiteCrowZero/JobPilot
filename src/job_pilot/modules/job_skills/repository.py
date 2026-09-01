@@ -127,34 +127,6 @@ class JobPostSkillRepository:
         )
         return result.scalar_one_or_none() is not None
 
-    async def get_job_skill_content_hash(
-        self,
-        *,
-        db: AsyncSession,
-        job_post_id: int,
-    ) -> str | None:
-        """读取岗位当前已同步技能内容 hash。"""
-
-        result = await db.execute(
-            select(JobPost.skill_content_hash).where(JobPost.id == job_post_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def update_job_skill_content_hash(
-        self,
-        *,
-        db: AsyncSession,
-        job_post_id: int,
-        skill_content_hash: str | None,
-    ) -> None:
-        """更新岗位当前已同步技能内容 hash。"""
-
-        job_post = await db.get(JobPost, job_post_id)
-        if job_post is None:
-            return
-        job_post.skill_content_hash = skill_content_hash
-        await db.flush()
-
     async def replace_skills_for_job(
         self,
         *,

@@ -19,7 +19,6 @@ def _valid_message_data() -> dict[str, object]:
         "message_id": str(uuid4()),
         "trace_id": str(uuid4()),
         "producer": "jobpilot-simulator",
-        "produced_at": datetime(2026, 8, 1, tzinfo=UTC),
         "fetched_at": datetime(2026, 8, 1, tzinfo=UTC),
         "source_platform": "mock",
         "external_job_id": "mock-10001",
@@ -46,7 +45,7 @@ def test_validate_raw_job_collected_message_accepts_strict_v1_json_contract() ->
         ("event_type", "job.raw.updated"),
         ("message_id", "not-a-uuid"),
         ("trace_id", "not-a-uuid"),
-        ("produced_at", datetime(2026, 8, 1)),
+        ("fetched_at", datetime(2026, 8, 1)),
     ],
 )
 def test_validate_raw_job_collected_message_rejects_invalid_contract_field(

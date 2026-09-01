@@ -11,10 +11,7 @@ from job_pilot.core.search import SearchBackend
 from job_pilot.modules.job_posts.contracts import JobPostSearchQuery
 from job_pilot.modules.job_posts.enums import (
     EducationLevel,
-    EmploymentType,
-    ExperienceLevel,
     JobPostStatus,
-    WorkplaceType,
 )
 from job_pilot.modules.job_posts.exceptions import JobPostNotFoundError
 from job_pilot.modules.job_posts.models import JobPost
@@ -31,7 +28,7 @@ from job_pilot.modules.job_posts.schemas import (
 from job_pilot.modules.job_skills.repository import JobPostSkillRepository
 from job_pilot.modules.job_skills.schemas import SkillLabelResponse
 
-FILTER_OPTIONS_CACHE_KEY = "job_posts:filter_options:open:v2"
+FILTER_OPTIONS_CACHE_KEY = "job_posts:filter_options:open:v3"
 FILTER_OPTIONS_CACHE_TTL_SECONDS = 60 * 30
 
 logger = logging.getLogger(__name__)
@@ -77,7 +74,6 @@ class JobPostService:
         if job_post is None:
             raise JobPostNotFoundError()
         list_item = self._to_list_item(job_post)
-        detail = job_post.detail
         skill_labels = await self.skill_repository.list_skill_labels_for_job(
             db=db,
             job_post_id=job_post.id,
@@ -85,14 +81,8 @@ class JobPostService:
         return JobPostDetailResponse(
             **list_item.model_dump(),
             skills=[SkillLabelResponse(id=skill_id, name=name) for skill_id, name in skill_labels],
-            source_url=detail.source_url if detail is not None else None,
-            company_url=detail.company_url if detail is not None else None,
-            description=detail.description if detail is not None else None,
-            has_visa_sponsorship=(detail.has_visa_sponsorship if detail is not None else None),
-            has_relocation_support=(detail.has_relocation_support if detail is not None else None),
-            work_authorization_note=(
-                detail.work_authorization_note if detail is not None else None
-            ),
+            source_url=job_post.source_url,
+            description=job_post.description,
         )
 
     async def get_filter_options(
@@ -114,11 +104,7 @@ class JobPostService:
         response = JobPostFilterOptionsResponse(
             source_platforms=await self.lookup_repository.list_source_platforms(db),
             statuses=list(JobPostStatus),
-            employment_types=list(EmploymentType),
-            workplace_types=list(WorkplaceType),
-            experience_levels=list(ExperienceLevel),
             education_levels=list(EducationLevel),
-            salary_currencies=await self.lookup_repository.list_salary_currencies(db),
             locations=await self.lookup_repository.list_locations(db),
             skills=[
                 SkillLabelResponse(id=skill.id, name=skill.name)
@@ -140,18 +126,10 @@ class JobPostService:
             source_name=job_post.source.name,
             source_base_url=job_post.source.base_url,
             title=job_post.title,
-            company_name=job_post.company_name,
             locations=job_post.locations,
-            is_remote=job_post.is_remote,
-            employment_type=job_post.employment_type,
-            workplace_type=job_post.workplace_type,
-            experience_level=job_post.experience_level,
+            experience_text=job_post.experience_text,
             education_level=job_post.education_level,
             salary_text=job_post.salary_text,
-            salary_min=job_post.salary_min,
-            salary_max=job_post.salary_max,
-            salary_currency=job_post.salary_currency,
-            salary_period=job_post.salary_period,
             published_at=job_post.published_at,
             created_at=job_post.created_at,
             status=job_post.status,

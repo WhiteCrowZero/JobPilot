@@ -11,13 +11,11 @@ def build_job_fingerprint(
     external_job_id: str | None,
     source_url: str | None,
     title: str | None = None,
-    company_name: str | None,
     locations: str | None,
 ) -> str:
     """生成规范化岗位去重指纹。
 
     优先级：来源稳定 ID > 来源详情 URL > 内容兜底。
-    内容兜底包含 title/company/locations，避免不同岗位被误合并。
     """
 
     normalized_external_job_id = clean_text(external_job_id)
@@ -31,7 +29,6 @@ def build_job_fingerprint(
             "content",
             source_platform,
             (title or "").casefold(),
-            (company_name or "").casefold(),
             (locations or "").casefold(),
         )
 

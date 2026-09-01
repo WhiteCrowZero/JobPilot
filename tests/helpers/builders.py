@@ -84,9 +84,7 @@ async def seed_test_job_post(
         source_id=job_source.id,
         fingerprint=f"test-{uuid4().hex}",
         title=title,
-        company_name="Test Company",
         locations="Remote",
-        is_remote=True,
     )
     session.add(job_post)
     await session.commit()
